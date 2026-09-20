@@ -1,4 +1,4 @@
-/* ═══════════ DONNÉES v6 — sans animaux ni amis ═══════════ */
+/* ═══════════ DONNÉES v8 — sans bourse/crypto/succès, avec santé ═══════════ */
 const DATA = {
   prenoms: ['Léa','Hugo','Emma','Lucas','Chloé','Nathan','Manon','Louis','Camille','Jules','Inès','Tom','Sarah','Théo','Lina','Gabriel','Zoé','Raphaël','Louise','Arthur','Nina','Ethan','Jade','Noah','Alice','Liam','Romane','Sacha','Eva','Mathis','Clara','Adam','Océane','Rayan','Margot','Enzo','Anaïs','Timéo','Juliette','Maxime'],
   noms: ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Mercier','Dupont','Lambert','Bonnet','Francois','Martinez','Legrand','Garnier','Faure','Rousseau','Blanc','Guerin','Muller','Henry','Roussel','Nicolas','Perrin'],
@@ -57,18 +57,34 @@ const DATA = {
   rentals: [ { n:'Chambre', loyer:380 }, { n:'Studio', loyer:560 }, { n:'T2', loyer:790 } ],
 
   insurers: [
-    { id:'mma', n:'MMA', m:24, cov:.70, d:'70 %' }, { id:'mnt', n:'MNT', m:18, cov:.60, d:'60 %' },
-    { id:'maif', n:'MAIF', m:22, cov:.75, d:'75 %' }, { id:'axa', n:'AXA', m:29, cov:.85, d:'85 %' },
-    { id:'groupama', n:'Groupama', m:26, cov:.80, d:'80 %' }
+    { id:'mma', n:'MMA', m:24, cov:.70, d:'Couvre 70 % des frais de santé.' },
+    { id:'mnt', n:'MNT', m:18, cov:.60, d:'Mutuelle territoriale, 60 %.' },
+    { id:'maif', n:'MAIF', m:22, cov:.75, d:'Assureur militant, 75 %.' },
+    { id:'axa', n:'AXA', m:29, cov:.85, d:'Formule premium, 85 %.' },
+    { id:'groupama', n:'Groupama', m:26, cov:.80, d:'Mutualiste, 80 %.' }
   ],
 
   banks: [
-    { id:'ce', n:'Caisse d\'Épargne', lv:3.0 }, { id:'bp', n:'Banque Populaire', lv:2.9 },
-    { id:'ca', n:'Crédit Agricole', lv:3.1 }, { id:'bnp', n:'BNP', lv:2.7 },
-    { id:'sg', n:'Société Générale', lv:2.6 }, { id:'lbp', n:'Banque Postale', lv:2.8 }
+    { id:'ce', n:'Caisse d\'Épargne', lv:3.0, desc:'Réseau d\'épargne régional, Livret A solide et service de proximité.' },
+    { id:'bp', n:'Banque Populaire', lv:2.9, desc:'Banque coopérative orientée artisans et commerçants.' },
+    { id:'ca', n:'Crédit Agricole', lv:3.1, desc:'Premier financeur de l\'économie locale, meilleur Livret A.' },
+    { id:'bnp', n:'BNP Paribas', lv:2.7, desc:'Grand réseau international, outils digitaux complets.' },
+    { id:'sg', n:'Société Générale', lv:2.6, desc:'Banque universelle, forte présence urbaine.' },
+    { id:'lbp', n:'La Banque Postale', lv:2.8, desc:'Banque citoyenne, accessible à tous.' }
   ],
 
   loans: [ { id:'immo', n:'Immo', rate:3.8 }, { id:'auto', n:'Auto', rate:4.9 }, { id:'conso', n:'Conso', rate:6.9 } ],
+
+  doctors: [
+    { id:'d1', n:'Dr Martin', spec:'Généraliste', fee:25, quality:0.8 },
+    { id:'d2', n:'Dr Bernard', spec:'Généraliste', fee:30, quality:0.9 },
+    { id:'d3', n:'Dr Dubois', spec:'Spécialiste', fee:55, quality:1.0 }
+  ],
+  vaccines: [
+    { id:'v_grippe', n:'Vaccin grippe', cost:40, d:'Évite la grippe saisonnière.' },
+    { id:'v_covid', n:'Vaccin covid', cost:60, d:'Protège des formes graves.' },
+    { id:'v_hepat', n:'Vaccin hépatite', cost:50, d:'Protection longue durée.' }
+  ],
 
   bizTypes: {
     boulangerie: {
@@ -150,12 +166,12 @@ const DATA = {
   ],
 
   skills: [
-    { id:'s_eff', n:'Efficace', d:'+10 % salaire', icon:'💼', maxLvl:5, costBase:500, costGrow:1.6, effect:'salary' },
-    { id:'s_faim', n:'Endurant', d:'-15 % perte faim/niveau', icon:'🍞', maxLvl:5, costBase:400, costGrow:1.5, effect:'hunger' },
-    { id:'s_sante', n:'Robuste', d:'+10 % récup santé/niveau', icon:'❤️', maxLvl:5, costBase:600, costGrow:1.6, effect:'health' },
-    { id:'s_rep', n:'Charismatique', d:'+20 % réputation gagnée/niveau', icon:'⭐', maxLvl:5, costBase:800, costGrow:1.7, effect:'rep' },
-    { id:'s_inv', n:'Négociateur', d:'-10 % coût améliorations/niveau', icon:'💰', maxLvl:5, costBase:1000, costGrow:1.8, effect:'upgrade' },
-    { id:'s_lotto', n:'Chanceux', d:'+2 % chance loto/niveau', icon:'🍀', maxLvl:3, costBase:1500, costGrow:2.0, effect:'luck' }
+    { id:'s_eff', n:'Efficace', d:'+10 % salaire', icon:'💼', maxLvl:5, costBase:500, costGrow:1.6 },
+    { id:'s_faim', n:'Endurant', d:'-15 % perte faim/niveau', icon:'🍞', maxLvl:5, costBase:400, costGrow:1.5 },
+    { id:'s_sante', n:'Robuste', d:'+10 % récup santé/niveau', icon:'❤️', maxLvl:5, costBase:600, costGrow:1.6 },
+    { id:'s_rep', n:'Charismatique', d:'+20 % réputation gagnée/niveau', icon:'⭐', maxLvl:5, costBase:800, costGrow:1.7 },
+    { id:'s_inv', n:'Négociateur', d:'-10 % coût améliorations/niveau', icon:'💰', maxLvl:5, costBase:1000, costGrow:1.8 },
+    { id:'s_lotto', n:'Chanceux', d:'+2 % chance loto/niveau', icon:'🍀', maxLvl:3, costBase:1500, costGrow:2.0 }
   ],
 
   lotto: { cost:5, chance:0.06, min:200, max:5000, cd:30 },
@@ -194,35 +210,6 @@ const DATA = {
     { id:'q_lotto', n:'Jouer 3 fois', tgt:3, type:'lotto', rew:150, xp:40 }
   ],
 
-  stocks: [
-    { id:'CAC40', n:'CAC 40', price:7842, volatility:0.003, trend:0.0001 },
-    { id:'AAPL', n:'Apple', price:178.50, volatility:0.005, trend:0.0002 },
-    { id:'TSLA', n:'Tesla', price:242.30, volatility:0.008, trend:0.00015 }
-  ],
-  cryptos: [
-    { id:'BTC', n:'Bitcoin', price:62400, volatility:0.012, trend:0.0003 },
-    { id:'ETH', n:'Ethereum', price:3150, volatility:0.015, trend:0.0004 }
-  ],
-
-  ach: [
-    { id:'a_job', i:'💼', n:'Premier emploi', d:'Signer un contrat', xp:30 },
-    { id:'a_dip', i:'🎓', n:'Diplômé', d:'Premier diplôme', xp:30 },
-    { id:'a_biz', i:'🏪', n:'Entrepreneur', d:'Fonder une entreprise', xp:60 },
-    { id:'a_10k', i:'💰', n:'10 000 €', d:'Solde > 10 k€', xp:50 },
-    { id:'a_100k', i:'🏦', n:'100 000 €', d:'Solde > 100 k€', xp:100 },
-    { id:'a_home', i:'🏠', n:'Propriétaire', d:'Acheter un bien', xp:60 },
-    { id:'a_sell100', i:'🛒', n:'Commerçant', d:'100 ventes', xp:60 },
-    { id:'a_bank', i:'🏛️', n:'Banquier', d:'Fonder banque', xp:120 },
-    { id:'a_lvl5', i:'⭐', n:'Niveau 5', d:'Atteindre niv 5', xp:80 },
-    { id:'a_jail', i:'🚔', n:'Prison', d:'Garde à vue', xp:40 },
-    { id:'a_miss5', i:'🎯', n:'Défis', d:'5 défis', xp:50 },
-    { id:'a_noir', i:'🕶️', n:'Marché noir', d:'Débloquer', xp:40 },
-    { id:'a_lotto', i:'🍀', n:'Veinard', d:'Gagner loto', xp:50 },
-    { id:'a_order', i:'📦', n:'Traiteur', d:'5 commandes', xp:70 },
-    { id:'a_skill', i:'🧠', n:'Compétent', d:'Acheter compétence', xp:40 },
-    { id:'a_stock', i:'📈', n:'Trader', d:'Acheter action', xp:45 }
-  ],
-
   events: [
     { t:'good', m:'Prime employeur', ok:() => G.jobs.length > 0, f(){ const g = rnd(200,900); receive(g, 'Prime'); return '+'+eur(g); } },
     { t:'good', m:'Remboursement impôts', f(){ const g = rnd(120,420); receive(g, 'Remboursement'); return '+'+eur(g); } },
@@ -231,13 +218,11 @@ const DATA = {
     { t:'good', m:'Buzz réseaux', ok:() => ownsBiz('magasin'), f(){ G.boost = { type:'magasin', mul:1.6, until: Date.now()+90000, label:'Buzz' }; return '×1,6 / 90 s'; } },
     { t:'good', m:'Foire immo', ok:() => ownsBiz('immobilier'), f(){ G.boost = { type:'immobilier', mul:2, until: Date.now()+60000, label:'Foire' }; return '×2 / 60 s'; } },
     { t:'good', m:'Héritage surprise', f(){ const g = rnd(500,3000); receive(g, 'Héritage'); return '+'+eur(g); } },
-    { t:'good', m:'Bonus performance', ok:() => G.jobs.length > 0, f(){ const g = rnd(300,1500); receive(g, 'Bonus'); return '+'+eur(g); } },
-    { t:'bad', m:'Grippe', f(){ let c = rnd(90,180); c *= (1-cov()); pay(c, 'Santé'); G.vitals.sante -= 12; return '−'+eur(c); } },
+    { t:'bad', m:'Grippe saisonnière', f(){ if (G.health.vaccines.includes('v_grippe')) return 'évité (vaccin)'; let c = rnd(90,180); c *= (1-cov()); pay(c, 'Frais grippe'); G.health.sick = true; G.vitals.sante -= 10; return '−'+eur(c); } },
     { t:'bad', m:'Panne voiture', ok:() => G.cars.length > 0, f(){ let c = rnd(200,600); c *= (1-cov()); pay(c, 'Réparation'); return '−'+eur(c); } },
     { t:'bad', m:'Contrôle fiscal', ok:() => G.stats.earned > 5000, f(){ const c = balance()*rnd(0.02,0.05); pay(c, 'Redressement'); G.stats.tax += c; return '−'+eur(c); } },
     { t:'bad', m:'Cambriolage', ok:() => balance() > 500, f(){ const c = balance()*rnd(0.01,0.03); pay(c, 'Vol'); return '−'+eur(c); } },
-    { t:'bad', m:'Amende stationnement', f(){ const c = 35; pay(c, 'Amende'); return '−'+eur(c); } },
-    { t:'bad', m:'Perte portefeuille', f(){ const c = balance()*rnd(0.005,0.015); pay(c, 'Perte'); return '−'+eur(c); } }
+    { t:'bad', m:'Amende stationnement', f(){ pay(35, 'Amende'); return '−'+eur(35); } }
   ],
 
   news: [
