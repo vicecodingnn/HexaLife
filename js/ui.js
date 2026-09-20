@@ -1,4 +1,4 @@
-/* ═══════════ INTERFACE v4 : onglet marketing, carte bleue animée, loto, météo ═══════════ */
+/* ═══════════ INTERFACE v6 — vitales redessinées, sans pets/amis ═══════════ */
 const UI = (() => {
   const el = id => document.getElementById(id);
 
@@ -13,26 +13,30 @@ const UI = (() => {
     auto:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 10 l1.5-4 h10 L15 10 v3 h-2 M2 10 h13"/><circle cx="5" cy="13" r="1.4"/><circle cx="12" cy="13" r="1.4"/></svg>',
     assurances:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8.5 2 L14 4 v4 c0 4-2.5 6-5.5 7 C5.5 14 3 12 3 8 V4 Z"/></svg>',
     economie:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 14 L6 9 L9 11.5 L15 4 M11 4 h4 v4"/></svg>',
+    bourse:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 13 l4 -5 l3 3 l6 -8"/><path d="M11 3 h4 v4"/></svg>',
+    skills:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M8.5 5 v4 l3 2"/></svg>',
     noir:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M4 4 l9 9"/></svg>',
     plus:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M8.5 5.5 v6 M5.5 8.5 h6"/></svg>',
     profil:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="6" r="2.6"/><path d="M3 14.5 c0-3 2.5-4.5 5.5-4.5 s5.5 1.5 5.5 4.5"/></svg>'
   };
+
   const NAV = [
-    ['vie','Accueil'],['inventaire','Inventaire'],['carriere','Formation & Emploi'],['marche','Courses'],
-    ['entreprises','Mes entreprises'],['banque','Banque'],['immobilier','Immobilier'],['auto','Concessionnaire'],
-    ['assurances','Assurances'],['economie','Économie'],['noir','Marché noir',true],['plus','Boutique +'],['profil','Profil']
+    ['vie','Accueil'],['inventaire','Inventaire'],['carriere','Emploi'],['marche','Courses'],
+    ['entreprises','Entreprises'],['banque','Banque'],['immobilier','Immo'],['auto','Auto'],
+    ['assurances','Assurances'],['bourse','Bourse'],['skills','Compétences'],
+    ['economie','Économie'],['noir','Noir',true],['plus','Boutique +'],['profil','Profil']
   ];
 
   const TUTO = [
-    { sel:null, t:'Bienvenue dans HEXALIFE', x:'Vous êtes un nouveau citoyen avec 2 000 € en liquide. Ouvrez vite un compte bancaire : salaires, impôts et factures passeront par là. Ce tutoriel vous guide en 9 étapes.' },
-    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim, soif baissent en continu. Mangez et buvez depuis l’Inventaire, sinon hôpital garanti.' },
-    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré est votre solde (compte bancaire ou liquide), animé à chaque entrée ou sortie d’euros. Le + ouvre la boutique.' },
-    { sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges, net par seconde : tout vit en temps réel, sans rechargement.' },
-    { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Formez-vous gratuitement puis signez un CDI : temps plein exclusif, ou partiel pour cumuler deux jobs.' },
-    { sel:'[data-id="marche"]', t:'Les courses', x:'Achetez nourriture et boissons : tout part dans l’Inventaire.' },
-    { sel:'[data-id="inventaire"]', t:'L’inventaire', x:'Cliquez sur un aliment pour le consommer, avec animation sur vos jauges.' },
-    { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Panneau complet : vue d’ensemble, production, marketing, RH, améliorations, compta.' },
-    { sel:null, t:'À vous de jouer !', x:'Défis, succès, loto, météo, opportunités flash… et méfiez-vous du marché noir. Bonus : 100 €.' }
+    { sel:null, t:'Bienvenue dans HEXALIFE', x:'2 000 € en liquide, un compte bancaire à ouvrir, des compétences à développer. 9 étapes pour maîtriser la ville.' },
+    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim, soif baissent en continu. Mangez et buvez depuis l\'Inventaire.' },
+    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré affiche votre solde. La carte bleue s\'anime à chaque mouvement.' },
+    { sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges, net par seconde — tout vit en temps réel.' },
+    { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Temps plein exclusif ou partiel cumulable. Signez votre premier contrat.' },
+    { sel:'[data-id="marche"]', t:'Les courses', x:'Tout part dans l\'Inventaire.' },
+    { sel:'[data-id="inventaire"]', t:'L\'inventaire', x:'Cliquez pour consommer, animation sur les jauges.' },
+    { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Panneau complet : production, marketing, RH, améliorations.' },
+    { sel:null, t:'À vous de jouer !', x:'Défis, quêtes quotidiennes, bourse, compétences… Bonus : 100 €.' }
   ];
 
   let feedItems = [];
@@ -56,6 +60,21 @@ const UI = (() => {
   }
   function pulseVital(rowId) { const r = el(rowId); if (!r) return; r.classList.remove('pulse'); void r.offsetWidth; r.classList.add('pulse'); }
 
+  function confetti() {
+    const container = document.createElement('div');
+    container.className = 'confetti-container';
+    for (let i = 0; i < 40; i++) {
+      const c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = Math.random() * 100 + '%';
+      c.style.animationDelay = Math.random() * 0.5 + 's';
+      c.style.backgroundColor = ['var(--gold)','var(--green)','var(--blue)','var(--orange)'][Math.floor(Math.random()*4)];
+      container.appendChild(c);
+    }
+    document.body.appendChild(container);
+    setTimeout(() => container.remove(), 2500);
+  }
+
   function moneyFx(amt) {
     const host = el('tbMoney'); if (!host) return;
     while (host.querySelectorAll('.money-fx').length > 5) host.querySelector('.money-fx').remove();
@@ -68,17 +87,17 @@ const UI = (() => {
     const c = el('tbCash'); if (c) { c.style.transform = 'scale(1.06)'; setTimeout(() => c.style.transform = '', 180); }
   }
 
-  /* ══ animation carte bleue ══ */
   function cardFx(txt, amt) {
     const d = document.createElement('div');
     d.className = 'cardfx';
     d.innerHTML = '<div class="cardfx-card">' +
+      '<div class="cf-holo"></div>' +
       '<div class="cf-top"><div class="cf-chip"></div><span class="cf-brand">HEXAPAY</span></div>' +
       '<div class="cf-num">•••• •••• •••• 4242</div>' +
       '<div class="cf-bottom"><div class="cf-txt">' + esc(txt) + '</div><div class="cf-amt">' + esc(amt || '') + '</div></div>' +
       '</div>';
     document.body.appendChild(d);
-    setTimeout(() => d.remove(), 1600);
+    setTimeout(() => d.remove(), 1800);
   }
 
   function modal(html) {
@@ -142,44 +161,64 @@ const UI = (() => {
   }
   function tutoNext() {
     G.tuto++;
-    if (G.tuto >= TUTO.length) { G.tuto = -1; receive(100, 'Bonus de tutoriel'); addXp(50); toast('Tutoriel terminé ! Bonus +100 €', 'good'); save(); }
+    if (G.tuto >= TUTO.length) { G.tuto = -1; receive(100, 'Bonus tutoriel'); addXp(50); toast('Tutoriel terminé +100 €', 'good'); save(); }
     placeTuto();
   }
   function tutoSkip() { G.tuto = -1; placeTuto(); toast('Tutoriel passé.', ''); save(); }
 
   function render() {
     updateTop();
-    const R = { vie:rVie, inventaire:rInv, carriere:rCarriere, marche:rMarche, entreprises:rEntreprises, banque:rBanque, immobilier:rImmo, auto:rAuto, assurances:rAssur, economie:rEco, noir:rNoir, plus:rPlus, profil:rProfil };
+    const R = {
+      vie:rVie, inventaire:rInv, carriere:rCarriere, marche:rMarche,
+      entreprises:rEntreprises, banque:rBanque, immobilier:rImmo, auto:rAuto,
+      assurances:rAssur, economie:rEco, bourse:rBourse, skills:rSkills,
+      noir:rNoir, plus:rPlus, profil:rProfil
+    };
     el('view').innerHTML = (R[T.tab] || rVie)();
     if (T.tab === 'vie' || T.tab === 'economie') renderFeedZone();
     if (T.tab === 'economie') drawCharts();
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && (T.bizTab === 'overview' || T.bizTab === 'compta'))
       spark(el('bChart'), G.biz[T.selBiz].hist, 'rgb(232,176,75)');
+    if (T.tab === 'bourse') {
+      W.stocks.forEach(s => spark(el('sp_' + s.id), s.hist, 'rgb(84,163,216)'));
+      W.cryptos.forEach(c => spark(el('sp_' + c.id), c.hist, 'rgb(232,176,75)'));
+    }
   }
   function renderFeedZone() {
     const z = el('feedZone');
-    if (z) z.innerHTML = feedItems.length ? feedItems.map(f => '<div class="feed-item"><span class="tm">' + f.t + '</span>' + f.html + '</div>').join('') : '<div class="empty">Le journal est vide pour l’instant.</div>';
+    if (z) z.innerHTML = feedItems.length ? feedItems.map(f => '<div class="feed-item"><span class="tm">' + f.t + '</span>' + f.html + '</div>').join('') : '<div class="empty">Le journal est vide.</div>';
   }
 
   function goals() {
     const g = [];
-    if (!G.diplomas.length && !G.training) g.push('Suivre votre première formation (gratuite)');
-    if (!G.jobs.length) g.push('Signer un premier contrat (plein ou partiel)');
-    if (!G.bank.bankId) g.push('Ouvrir un compte bancaire (salaires & impôts)');
-    if (!hasShelter()) g.push('Vous loger : location ou achat');
-    if (!G.biz.length) g.push('Fonder votre première entreprise');
-    if (!ownsBiz('banque')) g.push('Fonder votre propre banque');
+    if (!G.diplomas.length && !G.training) g.push('Suivre votre première formation');
+    if (!G.jobs.length) g.push('Signer un contrat');
+    if (!G.bank.bankId) g.push('Ouvrir un compte bancaire');
+    if (!hasShelter()) g.push('Vous loger');
+    if (!G.biz.length) g.push('Fonder une entreprise');
     return g;
   }
+
   function missionRows() {
-    return G.missions.list.map((m,i) => {
+    return (G.missions.list || []).map((m,i) => {
       const pct = clamp(m.prog/m.tgt*100, 0, 100), done = m.prog >= m.tgt;
       return '<div class="rowline"><div style="flex:1"><div class="lbl">' + m.n + '</div>' +
         '<div style="display:flex;align-items:center;margin-top:6px"><div class="bar b-gold" style="margin:0"><div class="fill" style="width:' + pct + '%"></div></div>' +
         '<span class="mono" style="font-size:11px;margin-left:8px">' + Math.min(m.prog,m.tgt) + '/' + m.tgt + '</span></div></div>' +
         (m.claimed ? '<span class="chip green">RÉCLAMÉ</span>' : done ? '<button class="btn btn-primary btn-sm" data-act="claimMission" data-i="' + i + '">+' + eur(m.rew) + '</button>' : '<span class="money">' + eur(m.rew) + '</span>') + '</div>';
-    }).join('');
+    }).join('') || '<div class="empty">Aucun défi.</div>';
   }
+
+  function questRows() {
+    return (G.quests.list || []).map((q,i) => {
+      const pct = clamp(q.prog/q.tgt*100, 0, 100), done = q.prog >= q.tgt;
+      return '<div class="rowline"><div style="flex:1"><div class="lbl">' + q.n + '</div>' +
+        '<div style="display:flex;align-items:center;margin-top:6px"><div class="bar b-gold" style="margin:0"><div class="fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="mono" style="font-size:11px;margin-left:8px">' + Math.min(q.prog,q.tgt) + '/' + q.tgt + '</span></div></div>' +
+        (q.claimed ? '<span class="chip green">RÉCLAMÉ</span>' : done ? '<button class="btn btn-primary btn-sm" data-act="claimQuest" data-i="' + i + '">+' + eur(q.rew) + '</button>' : '<span class="money">' + eur(q.rew) + ' +' + q.xp + ' XP</span>') + '</div>';
+    }).join('') || '<div class="empty">Aucune quête.</div>';
+  }
+
   function weatherChip() { const w = DATA.weather[W.weather.i]; return w.ico + ' ' + w.n; }
 
   function rVie() {
@@ -187,25 +226,27 @@ const UI = (() => {
     const bal = balance();
     const lottoCd = Math.max(0, Math.ceil(((G.lottoCd||0) - Date.now())/1000));
     return '<h1>Bonjour, ' + esc(G.name) + '.</h1>' +
-      '<div class="sub">Chaque seconde réelle = 1 minute de vie · Météo actuelle : <b>' + weatherChip() + '</b> (influence vos commerces) · salaires versés sur le compte, impôts prélevés dessus.</div>' +
+      '<div class="sub">Météo : <b>' + weatherChip() + '</b> · niveau ' + l + ' · ' + Math.round(cur/need*100) + ' % XP</div>' +
       '<div class="grid3"><div class="kpi"><div class="k-lbl">' + (G.bank.bankId ? 'Compte bancaire' : 'Liquidités') + '</div><div class="k-val" style="color:' + (bal < 0 ? 'var(--red)' : 'var(--gold)') + '">' + eur(bal) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Niveau citoyen ' + l + '</div><div class="k-val">' + Math.round(cur/need*100) + ' %<div class="bar b-gold" style="margin:8px 0 0"><div class="fill" style="width:' + (cur/need*100) + '%"></div></div></div></div>' +
-      '<div class="kpi"><div class="k-lbl">Impôts & cotisations versés</div><div class="k-val" style="color:var(--red)">' + eur(G.stats.tax) + '</div></div></div>' +
+      '<div class="kpi"><div class="k-lbl">Niveau ' + l + '</div><div class="k-val">' + Math.round(cur/need*100) + ' %<div class="bar b-gold" style="margin:8px 0 0"><div class="fill" style="width:' + (cur/need*100) + '%"></div></div></div></div>' +
+      '<div class="kpi"><div class="k-lbl">Impôts versés</div><div class="k-val" style="color:var(--red)">' + eur(G.stats.tax) + '</div></div></div>' +
       '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Défis du moment</h2>' + missionRows() + '</div>' +
-      '<div class="panel"><h2>Loto citoyenne</h2><div class="rowline"><div><div class="lbl">Tenter votre chance</div><div class="det">Ticket ' + eur(DATA.lotto.cost) + ' · ' + Math.round(DATA.lotto.chance*100) + ' % de gagner ' + eur0(DATA.lotto.min) + ' à ' + eur0(DATA.lotto.max) + ' · 1 ticket / 30 s</div></div>' +
-      '<span class="mono" style="color:var(--mut)" id="lottoCd"' + (lottoCd <= 0 ? ' hidden' : '') + '>' + lottoCd + ' s</span>' +
-      '<button class="btn btn-primary btn-sm" id="lottoBtn" data-act="lotto"' + (lottoCd > 0 ? ' hidden' : '') + '>Acheter un ticket</button></div>' +
-      '<div class="rowline"><div class="det">Gains cumulés : ' + (G.stats.lottoWins||0) + ' tirage(s) gagné(s)</div></div></div></div>' +
-      '<div class="grid2"><div class="panel"><h2>Objectifs du citoyen</h2>' + (goals().length ? goals().map(g => '<div class="rowline"><div class="lbl">▸ ' + g + '</div></div>').join('') : '<div class="empty">Tous les objectifs sont atteints.</div>') + '</div>' +
-      '<div class="panel"><h2>Journal de bord</h2><div id="feedZone"></div></div></div>';
+      '<div class="panel"><h2>Quêtes quotidiennes</h2>' + questRows() +
+      '<div class="det" style="margin-top:8px">Se rafraîchissent toutes les 24 h.</div></div></div>' +
+      '<div class="grid2"><div class="panel"><h2>Loto citoyenne</h2><div class="rowline"><div><div class="lbl">Tenter votre chance</div><div class="det">Ticket ' + eur(DATA.lotto.cost) + ' · ' + Math.round((DATA.lotto.chance + skillBonus('luck'))*100) + ' % de gagner ' + eur0(DATA.lotto.min) + '–' + eur0(DATA.lotto.max) + '</div></div>' +
+      '<span class="mono" id="lottoCd"' + (lottoCd <= 0 ? ' hidden' : '') + '>' + lottoCd + ' s</span>' +
+      '<button class="btn btn-primary btn-sm" id="lottoBtn" data-act="lotto"' + (lottoCd > 0 ? ' hidden' : '') + '>Acheter</button></div>' +
+      '<div class="rowline"><div class="det">Gains : ' + (G.stats.lottoWins||0) + ' tirage(s)</div></div></div>' +
+      '<div class="panel"><h2>Objectifs</h2>' + (goals().length ? goals().map(g => '<div class="rowline"><div class="lbl">▸ ' + g + '</div></div>').join('') : '<div class="empty">Tous atteints.</div>') + '</div></div>' +
+      '<div class="panel"><h2>Journal de bord</h2><div id="feedZone"></div></div>';
   }
 
   function rInv() {
     const entries = Object.entries(G.inv).filter(([,q]) => q > 0);
-    if (!entries.length) return '<h1>Inventaire</h1><div class="sub">Votre sac est vide. Achetez de quoi manger et boire : vos jauges baissent en continu.</div>' +
-      '<div class="panel" style="text-align:center;padding:40px"><div style="font-size:38px">🎒</div><p class="empty">Rien à consommer pour l’instant.</p>' +
+    if (!entries.length) return '<h1>Inventaire</h1><div class="sub">Votre sac est vide.</div>' +
+      '<div class="panel" style="text-align:center;padding:40px"><div style="font-size:38px">🎒</div><p class="empty">Rien à consommer.</p>' +
       '<button class="btn btn-primary" data-act="tab" data-id="marche">Aller aux courses</button></div>';
-    return '<h1>Inventaire</h1><div class="sub">Cliquez sur un aliment pour le consommer immédiatement (animation sur les jauges en bas à gauche).</div>' +
+    return '<h1>Inventaire</h1><div class="sub">Cliquez pour consommer immédiatement.</div>' +
       '<div class="inv-grid">' + entries.map(([id,q],k) => { const f = foodById(id);
         return '<div class="inv-card" style="animation-delay:' + (k*0.04) + 's"><span class="qty">×' + q + '</span><div style="font-size:30px">' + f.ico + '</div>' +
         '<div class="nm">' + f.n + '</div><div class="fx">' + (f.f ? 'Faim +' + f.f : '') + (f.f && f.s ? ' · ' : '') + (f.s ? 'Soif +' + f.s : '') + '</div>' +
@@ -213,19 +254,19 @@ const UI = (() => {
   }
 
   function rMarche() {
-    return '<h1>Courses</h1><div class="sub">Prix TTC (TVA 20 % incluse). Paiement par carte : débité de votre compte bancaire.</div><div class="panel">' +
+    return '<h1>Courses</h1><div class="sub">Prix TTC, paiement débité du compte bancaire.</div><div class="panel">' +
       DATA.foods.map(f => '<div class="rowline"><div><div class="lbl">' + f.ico + ' ' + f.n + '</div><div class="det">' + (f.f ? 'Faim +' + f.f : '') + (f.f && f.s ? ' · ' : '') + (f.s ? 'Soif +' + f.s : '') + ' · en sac : ' + (G.inv[f.id]||0) + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:12px"><span class="money">' + eur(f.p) + '</span>' +
       '<button class="btn btn-sm btn-primary" data-act="buyFood" data-id="' + f.id + '">Acheter</button></div></div>').join('') + '</div>';
   }
 
   function rCarriere() {
-    let mine;
+    let mine = '';
     if (G.jobs.length) {
       mine = G.jobs.map((j,i) => '<div class="rowline"><div><div class="lbl">' + esc(j.title) + ' — ' + esc(DATA.companies[j.c].n) + '</div>' +
-        '<div class="det">' + eur(j.h) + ' brut/h · ' + (j.mode === 'plein' ? 'temps plein (100 %)' : 'temps partiel (50 %)') + ' · net ≈ ' + eur(jobNetHourly(j.h, j.mode)) + '/h · minutes : ' + (j.mins||0) + (j.promo ? ' · +6 % promotion' : '') + '</div></div>' +
+        '<div class="det">' + eur(j.h) + ' brut/h · ' + (j.mode === 'plein' ? 'temps plein' : 'temps partiel') + ' · net ≈ ' + eur(jobNetHourly(j.h, j.mode)) + '/h</div></div>' +
         '<button class="btn btn-sm btn-danger" data-act="quitJob" data-i="' + i + '">Quitter</button></div>').join('');
-    } else mine = '<div class="empty">Aucun poste. Consultez le tableau des offres ci-dessous.</div>';
+    } else mine = '<div class="empty">Aucun poste.</div>';
     const loadPct = Math.round(totalLoad()*100);
     const secs = [''].concat([...new Set(DATA.companies.map(c => c.sec))]);
     const q = (T.jobF.q || '').toLowerCase();
@@ -237,45 +278,45 @@ const UI = (() => {
       x.c.o.map((o,oi) => { const tierOk = playerTier() >= o[2], loadOk = totalLoad() < 1;
         return '<div class="offer-row"><div><div class="o-n">' + esc(o[0]) + '</div><div class="o-d">' + eur(o[1]) + ' brut/h · tier ' + o[2] + '</div></div>' +
         '<button class="btn btn-sm ' + (tierOk && loadOk ? 'btn-primary' : '') + '" data-act="offer" data-c="' + x.ci + '" data-o="' + oi + '" ' + (tierOk && loadOk ? '' : 'disabled') + '>' +
-        (!tierOk ? 'Diplôme req.' : !loadOk ? 'Charge pleine' : 'Choisir') + '</button></div>'; }).join('') + '</div>').join('') || '<div class="empty">Aucune offre ne correspond aux filtres.</div>';
+        (!tierOk ? 'Diplôme req.' : !loadOk ? 'Charge pleine' : 'Choisir') + '</button></div>'; }).join('') + '</div>').join('') || '<div class="empty">Aucune offre.</div>';
     let train = '';
     if (G.training) { const f = DATA.form.find(x => x.id === G.training.id);
-      train = '<div class="panel"><h2>Formation en cours</h2><div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">Terminée dans <span class="mono" id="trainRest">' + Math.max(0, Math.ceil((G.training.end - Date.now())/1000)) + ' s</span></div></div><span class="chip gold">EN COURS</span></div></div>'; }
+      train = '<div class="panel"><h2>Formation en cours</h2><div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">Dans <span class="mono" id="trainRest">' + Math.max(0, Math.ceil((G.training.end - Date.now())/1000)) + ' s</span></div></div><span class="chip gold">EN COURS</span></div></div>'; }
     const forms = DATA.form.map(f => { const done = G.diplomas.includes(f.id);
-      return '<div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">' + f.d + ' · ' + (f.cost ? eur(f.cost) : 'Gratuit') + ' · tier ' + f.tier + '</div></div>' +
-      (done ? '<span class="chip green">OBTENU</span>' : '<button class="btn btn-sm btn-primary" data-act="train" data-id="' + f.id + '">S’inscrire</button>') + '</div>'; }).join('');
-    return '<h1>Formation & Emploi</h1><div class="sub">Tier actuel : ' + playerTier() + ' · Temps plein = 1 seul job · Temps partiel = cumulable (charge totale 100 % max).</div>' +
-      train +
-      '<div class="panel"><h2>Mes postes</h2><div style="display:flex;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--mut)">Charge de travail</span><div class="bar b-gold"><div class="fill" style="width:' + loadPct + '%"></div></div><span class="mono" style="font-size:12px">' + loadPct + ' %</span></div>' + mine + '</div>' +
-      '<div class="panel"><h2>Tableau des offres</h2>' +
-      '<div class="job-filters"><select class="mini" data-act="jobSec">' + secs.map(s => '<option value="' + esc(s) + '"' + (T.jobF.sec === s ? ' selected' : '') + '>' + (s ? esc(s) : 'Tous les secteurs') + '</option>').join('') + '</select>' +
-      '<input type="text" data-act="jobQ" placeholder="Rechercher un poste ou une entreprise…" value="' + esc(T.jobF.q) + '">' +
-      '<label class="chk"><input type="checkbox" data-act="jobOk"' + (T.jobF.ok ? ' checked' : '') + '> Accessibles à mon tier</label></div>' +
+      return '<div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">' + f.d + ' · ' + (f.cost ? eur(f.cost) : 'Gratuit') + '</div></div>' +
+      (done ? '<span class="chip green">OBTENU</span>' : '<button class="btn btn-sm btn-primary" data-act="train" data-id="' + f.id + '">S\'inscrire</button>') + '</div>'; }).join('');
+    return '<h1>Formation & Emploi</h1><div class="sub">Tier ' + playerTier() + ' · Plein = 1 job · Partiel = cumulable.</div>' +
+      train + 
+      '<div class="panel"><h2>Mes postes</h2><div style="display:flex;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--mut)">Charge</span><div class="bar b-gold"><div class="fill" style="width:' + loadPct + '%"></div></div><span class="mono" style="font-size:12px">' + loadPct + ' %</span></div>' + mine + '</div>' +
+      '<div class="panel"><h2>Offres</h2>' +
+      '<div class="job-filters"><select class="mini" data-act="jobSec">' + secs.map(s => '<option value="' + esc(s) + '"' + (T.jobF.sec === s ? ' selected' : '') + '>' + (s ? esc(s) : 'Tous secteurs') + '</option>').join('') + '</select>' +
+      '<input type="text" data-act="jobQ" placeholder="Rechercher…" value="' + esc(T.jobF.q) + '">' +
+      '<label class="chk"><input type="checkbox" data-act="jobOk"' + (T.jobF.ok ? ' checked' : '') + '> Accessibles</label></div>' +
       '<div class="job-grid">' + cards + '</div></div>' +
-      '<div class="panel"><h2>Catalogue des formations</h2>' + forms + '</div>';
+      '<div class="panel"><h2>Formations</h2>' + forms + '</div>';
   }
 
   function rEntreprises() {
     if (T.selBiz >= 0 && G.biz[T.selBiz]) return rBizDetail(G.biz[T.selBiz], T.selBiz);
-    const owned = G.biz.map((b,i) => '<div class="panel" style="cursor:pointer" data-act="selBiz" data-i="' + i + '"><h2>' + esc(b.name) + ' <span class="chip gold">' + DATA.bizTypes[b.type].label.toUpperCase() + '</span></h2><div class="sub" style="margin:0">Réputation ' + Math.round(b.rep) + '/100 · ' + b.emps.length + ' salarié·s · CA cumulé ' + eur(b.rev) + ' · cliquez pour ouvrir le panneau</div></div>').join('') || '<div class="panel"><div class="empty">Vous ne possédez encore aucune entreprise.</div></div>';
+    const owned = G.biz.map((b,i) => '<div class="panel" style="cursor:pointer" data-act="selBiz" data-i="' + i + '"><h2>' + esc(b.name) + ' <span class="chip gold">' + DATA.bizTypes[b.type].label.toUpperCase() + '</span></h2><div class="sub" style="margin:0">Réputation ' + Math.round(b.rep) + '/100 · ' + b.emps.length + ' salariés · CA ' + eur(b.rev) + '</div></div>').join('') || '<div class="panel"><div class="empty">Aucune entreprise.</div></div>';
     const create = Object.entries(DATA.bizTypes).map(([type,bt]) => '<div class="rowline"><div><div class="lbl">' + bt.label + '</div><div class="det">Capital : ' + eur(bt.cost) + (bt.req ? ' · Requis : ' + DATA.form.find(f => f.id === bt.req).n : '') + '</div></div><button class="btn btn-sm btn-primary" data-act="openCreate" data-type="' + type + '">Fonder</button></div>').join('');
-    return '<h1>Mes entreprises</h1><div class="sub">Panneaux complets : vue d’ensemble, production, marketing, RH, améliorations, compta. IS 15 % et URSSAF prélevés sur le compte.</div>' + owned + '<div class="panel"><h2>Créer une entreprise</h2>' + create + '</div>';
+    return '<h1>Mes entreprises</h1><div class="sub">Panneaux complets par entreprise.</div>' + owned + '<div class="panel"><h2>Créer une entreprise</h2>' + create + '</div>';
   }
 
   function bizTabs(b) {
-    const tabs = [['overview','Vue d’ensemble']];
-    if (b.type === 'boulangerie' || b.type === 'magasin') tabs.push(['prod','Production & stocks']);
+    const tabs = [['overview','Vue d\'ensemble']];
+    if (b.type === 'boulangerie' || b.type === 'magasin') tabs.push(['prod','Production']);
     tabs.push(['mkt','Marketing']); tabs.push(['hr','RH']); tabs.push(['ups','Améliorations']); tabs.push(['compta','Compta']);
     return '<div class="biz-tabs">' + tabs.map(([id,lbl]) => '<button class="biz-tab' + (T.bizTab === id ? ' active' : '') + '" data-act="bizTab" data-t="' + id + '">' + lbl + '</button>').join('') + '</div>';
   }
   function activeChips(b) {
     const now = Date.now(); let s = '';
-    if (b.boostUntil > now) s += '<span class="chip gold" style="margin-right:6px">📣 Boost ×' + b.boostMul + ' — ' + Math.ceil((b.boostUntil-now)/1000) + ' s</span>';
-    if (b.promoUntil > now) s += '<span class="chip red" style="margin-right:6px">⚡ Vente flash — ' + Math.ceil((b.promoUntil-now)/1000) + ' s</span>';
-    if (perk(b,'fidelite')) s += '<span class="chip green" style="margin-right:6px">Carte fidélité</span>';
-    if (perk(b,'autoRestock')) s += '<span class="chip green" style="margin-right:6px">Réassort auto</span>';
+    if (b.boostUntil > now) s += '<span class="chip gold" style="margin-right:6px">📣 ×' + b.boostMul + ' ' + Math.ceil((b.boostUntil-now)/1000) + 's</span>';
+    if (b.promoUntil > now) s += '<span class="chip red" style="margin-right:6px">⚡ Flash ' + Math.ceil((b.promoUntil-now)/1000) + 's</span>';
+    if (perk(b,'fidelite')) s += '<span class="chip green" style="margin-right:6px">Fidélité</span>';
+    if (perk(b,'autoRestock')) s += '<span class="chip green" style="margin-right:6px">Réassort</span>';
     if (perk(b,'enseigne')) s += '<span class="chip green" style="margin-right:6px">Enseigne</span>';
-    if (perk(b,'pub')) s += '<span class="chip green" style="margin-right:6px">Spot TV</span>';
+    if (perk(b,'pub')) s += '<span class="chip green" style="margin-right:6px">TV</span>';
     return s;
   }
 
@@ -287,138 +328,169 @@ const UI = (() => {
       body = '<div style="margin-bottom:12px">' + activeChips(b) + '</div>' +
         '<div class="grid3"><div class="kpi"><div class="k-lbl">CA cumulé</div><div class="k-val" style="color:var(--gold)">' + eur(b.rev) + '</div></div>' +
         '<div class="kpi"><div class="k-lbl">Réputation</div><div class="k-val">' + Math.round(b.rep) + '/100</div></div>' +
-        '<div class="kpi"><div class="k-lbl">Salaires versés</div><div class="k-val" style="color:var(--red)">' + eur(b.wagesTotal||0) + '</div></div></div>' +
-        '<h3>Revenu des 60 dernières secondes</h3><canvas class="chart" id="bChart" style="height:130px"></canvas>' +
+        '<div class="kpi"><div class="k-lbl">Salaires</div><div class="k-val" style="color:var(--red)">' + eur(b.wagesTotal||0) + '</div></div></div>' +
+        '<h3>Revenu 60 s</h3><canvas class="chart" id="bChart" style="height:130px"></canvas>' +
         (top ? '<h3>Meilleures ventes</h3><div>' + top + '</div>' : '') +
         (b.type === 'boulangerie' ? '<h3>Commande spéciale</h3>' + (b.order
-          ? '<div class="rowline"><div><div class="lbl">📦 ' + b.order.qty + ' × ' + esc(b.order.pn) + ' — récompense ' + eur(b.order.reward) + '</div><div class="det">Expire dans ' + Math.max(0, Math.ceil((b.order.until - Date.now())/1000)) + ' s · stock actuel : ' + Math.floor(b.stock[b.order.p]||0) + '</div></div>' +
+          ? '<div class="rowline"><div><div class="lbl">📦 ' + b.order.qty + ' × ' + esc(b.order.pn) + ' — ' + eur(b.order.reward) + '</div><div class="det">' + Math.max(0, Math.ceil((b.order.until - Date.now())/1000)) + ' s</div></div>' +
             '<button class="btn btn-primary btn-sm" data-act="orderFill" data-b="' + i + '"' + ((b.stock[b.order.p]||0) < b.order.qty ? ' disabled' : '') + '>Honorer</button></div>'
-          : '<div class="empty">Les traiteurs et comités d’entreprise passent commande de temps en temps…</div>') : '') +
-        (b.type === 'immobilier' ? '<h3>Mandats</h3><div class="rowline"><div><div class="lbl">Mandats actifs : ' + (b.mandats||0) + '</div><div class="det">Commission 0,8–2,2 €/s chacun, boostée par le réseau et la météo.</div></div><button class="btn btn-primary btn-sm" data-act="buyMandat" data-b="' + i + '">Signer (300 €)</button></div>' : '') +
-        (b.type === 'banque' ? '<h3>Pilotage des taux</h3>' +
-          '<div class="rowline"><div><div class="lbl">Taux crédit client</div><div class="det">Élevé = plus de marge, moins de demande.</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="-0.5">−</button><span class="money">' + b.tauxCredit.toFixed(1) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="0.5">+</button></div></div>' +
-          '<div class="rowline"><div><div class="lbl">Taux servi aux dépôts</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="-0.25">−</button><span class="money">' + b.tauxLivret.toFixed(2) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="0.25">+</button></div></div>' +
-          '<div class="rowline"><div><div class="lbl">Campagne publicitaire</div></div><button class="btn btn-primary btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="mkt">Lancer (1 000 €)</button></div>' +
+          : '<div class="empty">Pas de commande.</div>') : '') +
+        (b.type === 'immobilier' ? '<h3>Mandats</h3><div class="rowline"><div><div class="lbl">' + (b.mandats||0) + ' mandats</div></div><button class="btn btn-primary btn-sm" data-act="buyMandat" data-b="' + i + '">Signer (300 €)</button></div>' : '') +
+        (b.type === 'banque' ? '<h3>Taux</h3>' +
+          '<div class="rowline"><div class="lbl">Crédit</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="-0.5">−</button><span class="money">' + b.tauxCredit.toFixed(1) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="0.5">+</button></div></div>' +
+          '<div class="rowline"><div class="lbl">Dépôts</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="-0.25">−</button><span class="money">' + b.tauxLivret.toFixed(2) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="0.25">+</button></div></div>' +
+          '<div class="rowline"><div class="lbl">Pub</div><button class="btn btn-primary btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="mkt">1 000 €</button></div>' +
           '<div class="grid3" style="margin-top:12px"><div class="kpi"><div class="k-lbl">Comptes</div><div class="k-val">' + b.accounts + '</div></div><div class="kpi"><div class="k-lbl">Dépôts</div><div class="k-val">' + kfmt(b.deposits) + '</div></div><div class="kpi"><div class="k-lbl">Crédits</div><div class="k-val">' + kfmt(b.loans) + '</div></div></div>' : '');
     }
     else if (T.bizTab === 'prod') {
       if (b.type === 'boulangerie') {
         const bt = DATA.bizTypes.boulangerie;
-        body = '<h3>Entrepôt de matières premières</h3>' +
-          Object.entries(bt.mats).map(([id,m]) => '<div class="rowline"><div><div class="lbl">' + m.n + '</div><div class="det">Stock : ' + Math.floor(b.mats[id]||0) + ' · ' + eur(m.p) + '/unité</div></div><div style="display:flex;gap:8px"><button class="btn btn-sm" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="10">+10 (' + eur(m.p*10) + ')</button><button class="btn btn-sm btn-primary" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="50">+50 (' + eur(m.p*50) + ')</button></div></div>').join('') +
-          '<h3>Fournil — production & prix</h3>' + bt.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">Stock : ' + Math.floor(b.stock[p.id]||0) + ' · vendus : ' + (b.counters[p.id]||0) + ' · réf. ' + eur(p.ref) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="1">Cuire ×1</button><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="10">×10</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('') +
-          '<div class="det" style="margin-top:8px">Le four de base produit 1 article/s, puis +1 par salarié et par niveau de four.</div>';
+        body = '<h3>Matières</h3>' +
+          Object.entries(bt.mats).map(([id,m]) => '<div class="rowline"><div><div class="lbl">' + m.n + '</div><div class="det">' + Math.floor(b.mats[id]||0) + ' · ' + eur(m.p) + '</div></div><div style="display:flex;gap:8px"><button class="btn btn-sm" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="50">+50</button></div></div>').join('') +
+          '<h3>Production</h3>' + bt.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">Stock ' + Math.floor(b.stock[p.id]||0) + ' · vendus ' + (b.counters[p.id]||0) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="1">×1</button><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="10">×10</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('');
       } else {
-        body = '<div style="margin-bottom:12px">' + (perk(b,'autoRestock') ? '<span class="chip green">Réassort automatique actif</span>' : '<span class="chip">Réassort manuel — voir onglet Marketing pour l’automatiser</span>') + '</div>' +
-          '<h3>Approvisionnement & rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">Stock : ' + Math.floor(b.stock[p.id]||0) + ' · vendus : ' + (b.counters[p.id]||0) + ' · grossiste ' + eur(p.cost) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="10">+10 (' + eur(p.cost*10) + ')</button><button class="btn btn-sm btn-primary" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="50">+50</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('');
+        body = '<div style="margin-bottom:12px">' + (perk(b,'autoRestock') ? '<span class="chip green">Réassort auto actif</span>' : '<span class="chip">Manuel</span>') + '</div>' +
+          '<h3>Rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">' + Math.floor(b.stock[p.id]||0) + ' · vendu ' + (b.counters[p.id]||0) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="50">+50</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('');
       }
     }
     else if (T.bizTab === 'mkt') {
-      body = '<div style="margin-bottom:12px">' + (activeChips(b) || '<span class="chip">Aucune campagne active</span>') + '</div>' +
+      body = '<div style="margin-bottom:12px">' + (activeChips(b) || '<span class="chip">Aucune campagne</span>') + '</div>' +
         ((DATA.mkt[b.type] || []).map(a => { const owned = a.once && perk(b, a.perk);
           return '<div class="rowline"><div><div class="lbl">' + a.n + (owned ? ' <span class="chip green">ACTIF</span>' : '') + '</div><div class="det">' + a.d + '</div></div>' +
-          (owned ? '' : '<button class="btn btn-sm btn-primary" data-act="mktDo" data-b="' + i + '" data-a="' + a.id + '">' + eur(a.cost) + '</button>') + '</div>'; }).join('') || '<div class="empty">Rien à afficher.</div>');
+          (owned ? '' : '<button class="btn btn-sm btn-primary" data-act="mktDo" data-b="' + i + '" data-a="' + a.id + '">' + eur(a.cost) + '</button>') + '</div>'; }).join('') || '<div class="empty">Rien.</div>');
     }
     else if (T.bizTab === 'hr') {
-      const empList = b.emps.map((e,ei) => '<div class="rowline"><div><div class="lbl">' + esc(e.n) + '</div><div class="det">' + eur(e.h) + '/h</div></div><button class="btn btn-sm btn-danger" data-act="fire" data-b="' + i + '" data-i="' + ei + '">Licencier</button></div>').join('') || '<div class="empty">Aucun salarié.</div>';
-      body = '<div class="rowline"><div><div class="lbl">Effectif : ' + b.emps.length + ' / ' + ((DATA.bizTypes[b.type]||{}).maxEmp || 4) + '</div><div class="det">Chaque salarié produit (boulangerie), attire (magasin/banque) ou commissionne (agence).</div></div><button class="btn btn-primary" data-act="hire" data-b="' + i + '">Recruter</button></div>' + empList;
+      const empList = b.emps.map((e,ei) => '<div class="rowline"><div><div class="lbl">' + esc(e.n) + '</div><div class="det">' + eur(e.h) + '/h</div></div><button class="btn btn-sm btn-danger" data-act="fire" data-b="' + i + '" data-i="' + ei + '">Licencier</button></div>').join('') || '<div class="empty">Aucun.</div>';
+      body = '<div class="rowline"><div><div class="lbl">' + b.emps.length + ' / ' + ((DATA.bizTypes[b.type]||{}).maxEmp || 4) + '</div></div><button class="btn btn-primary" data-act="hire" data-b="' + i + '">Recruter</button></div>' + empList;
     }
     else if (T.bizTab === 'ups') {
-      body = (DATA.ups[b.type] || []).map(u => { const lvl = upLvl(b,u.id), maxed = lvl >= u.max; const cost = Math.round(u.cost*Math.pow(u.grow,lvl));
-        return '<div class="rowline"><div><div class="lbl">' + u.n + ' <span class="chip gold">Niv. ' + lvl + '/' + u.max + '</span></div><div class="det">' + u.d + '</div></div>' +
-        (maxed ? '<span class="chip green">MAX</span>' : '<button class="btn btn-sm btn-primary" data-act="upgrade" data-b="' + i + '" data-u="' + u.id + '">' + eur(cost) + '</button>') + '</div>'; }).join('') || '<div class="empty">Aucune amélioration.</div>';
+      body = (DATA.ups[b.type] || []).map(u => { const lvl = upLvl(b,u.id), maxed = lvl >= u.max; const cost = Math.round(u.cost*Math.pow(u.grow,lvl)*skillBonus('upgrade'));
+        return '<div class="rowline"><div><div class="lbl">' + u.n + ' <span class="chip gold">Niv ' + lvl + '/' + u.max + '</span></div><div class="det">' + u.d + '</div></div>' +
+        (maxed ? '<span class="chip green">MAX</span>' : '<button class="btn btn-sm btn-primary" data-act="upgrade" data-b="' + i + '" data-u="' + u.id + '">' + eur(cost) + '</button>') + '</div>'; }).join('') || '<div class="empty">Aucune.</div>';
     }
     else {
-      body = '<table class="t"><tr><td>Chiffre d’affaires cumulé</td><td class="money">' + eur(b.rev) + '</td></tr>' +
-        '<tr><td>Unités vendues / ventes</td><td>' + (b.sold || Object.values(b.counters||{}).reduce((a,x)=>a+x,0)) + '</td></tr>' +
-        '<tr><td>Masse salariale versée</td><td class="money neg">−' + eur(b.wagesTotal||0) + '</td></tr>' +
-        '<tr><td>Bénéfice du cycle en cours</td><td>' + eur(b.profit||0) + '</td></tr>' +
-        '<tr><td>Impôt sur les sociétés</td><td>15 % du bénéfice, prélevé chaque minute sur le compte</td></tr></table>' +
-        '<h3>Revenu des 60 dernières secondes</h3><canvas class="chart" id="bChart" style="height:130px"></canvas>';
+      body = '<table class="t"><tr><td>CA</td><td class="money">' + eur(b.rev) + '</td></tr>' +
+        '<tr><td>Ventes</td><td>' + (b.sold || Object.values(b.counters||{}).reduce((a,x)=>a+x,0)) + '</td></tr>' +
+        '<tr><td>Masse salariale</td><td class="money neg">−' + eur(b.wagesTotal||0) + '</td></tr>' +
+        '<tr><td>Bénéfice cycle</td><td>' + eur(b.profit||0) + '</td></tr></table>' +
+        '<h3>Revenu 60 s</h3><canvas class="chart" id="bChart" style="height:130px"></canvas>';
     }
-    return '<button class="btn btn-ghost btn-sm" data-act="backBiz">← Toutes mes entreprises</button>' +
-      '<h1 style="margin-top:14px">' + esc(b.name) + '</h1><div class="sub">' + DATA.bizTypes[b.type].label + ' · panneau de pilotage · météo actuelle : ' + weatherChip() + '</div>' +
+    return '<button class="btn btn-ghost btn-sm" data-act="backBiz">← Retour</button>' +
+      '<h1 style="margin-top:14px">' + esc(b.name) + '</h1><div class="sub">' + DATA.bizTypes[b.type].label + ' · ' + weatherChip() + '</div>' +
       bizTabs(b) + '<div class="panel">' + body + '</div>';
   }
 
   function rBanque() {
-    if (!G.bank.bankId) return '<h1>Ouvrir un compte bancaire</h1><div class="sub">Indispensable : votre salaire y sera versé et <b>tous les impôts, taxes, loyers et mensualités y seront prélevés automatiquement</b>. Tant que vous n’en avez pas, tout se paie en liquide.</div><div class="panel">' + DATA.banks.map(b => '<div class="rowline"><div><div class="lbl">' + b.n + '</div><div class="det">Livret A rémunéré ' + b.lv + ' %/an · ouverture gratuite</div></div><button class="btn btn-sm btn-primary" data-act="openBank" data-id="' + b.id + '">Ouvrir un compte</button></div>').join('') + '</div>';
+    if (!G.bank.bankId) return '<h1>Ouvrir un compte bancaire</h1><div class="sub">Salaires, impôts, taxes passent par là.</div><div class="panel">' + DATA.banks.map(b => '<div class="rowline"><div><div class="lbl">' + b.n + '</div><div class="det">Livret A ' + b.lv + ' %/an</div></div><button class="btn btn-sm btn-primary" data-act="openBank" data-id="' + b.id + '">Ouvrir</button></div>').join('') + '</div>';
     const bd = DATA.banks.find(b => b.id === G.bank.bankId);
-    const loans = G.bank.loans.map((L,i) => '<div class="rowline"><div><div class="lbl">' + L.n + '</div><div class="det">Reste dû ' + eur(L.reste) + ' · mensualité ' + eur(L.mens) + '/mois prélevée sur le compte</div></div><button class="btn btn-sm" data-act="loanRepay" data-i="' + i + '">Solder</button></div>').join('') || '<div class="empty">Aucun crédit en cours.</div>';
+    const loans = G.bank.loans.map((L,i) => '<div class="rowline"><div><div class="lbl">' + L.n + '</div><div class="det">' + eur(L.reste) + ' · ' + eur(L.mens) + '/mois</div></div><button class="btn btn-sm" data-act="loanRepay" data-i="' + i + '">Solder</button></div>').join('') || '<div class="empty">Aucun crédit.</div>';
     const prelev = [];
-    if (G.rental) prelev.push(['Loyer principal', G.rental.loyer]);
-    G.houses.forEach(h => prelev.push(['Charges — ' + DATA.homes[h.i].n, h.c]));
+    if (G.rental) prelev.push(['Loyer', G.rental.loyer]);
+    G.houses.forEach(h => prelev.push(['Charges', h.c]));
     G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); prelev.push(['Assurance ' + a.n, a.m]); });
     G.bank.loans.forEach(L => prelev.push(['Crédit ' + L.n, L.mens]));
     const emp = G.biz.reduce((a,b) => a + b.emps.length, 0);
-    if (emp) prelev.push(['URSSAF (' + emp + ' salarié·s)', emp*45]);
+    if (emp) prelev.push(['URSSAF', emp*45]);
     const jrn = (G.journal || []).slice(0, 18).map(j => '<tr><td class="mono" style="color:var(--dim)">' + new Date(j.t).toLocaleTimeString('fr-FR') + '</td><td>' + esc(j.label) + '</td><td class="money ' + (j.amt < 0 ? 'neg' : '') + '">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</td></tr>').join('') || '<tr><td colspan="3" class="empty">Aucune opération.</td></tr>';
-    return '<h1>Banque — ' + esc(bd.n) + '</h1><div class="sub">Tout votre argent vit ici : versements, prélèvements, épargne et crédits. Chaque mouvement déclenche l’animation de carte.</div>' +
+    return '<h1>Banque — ' + esc(bd.n) + '</h1><div class="sub">Animations de carte à chaque mouvement.</div>' +
       '<div class="grid3"><div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val" style="color:' + (G.bank.compte < 0 ? 'var(--red)' : 'var(--gold)') + '">' + eur(G.bank.compte) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Livret A (' + bd.lv + ' %/an)</div><div class="k-val">' + eur(G.bank.livret) + ' <span style="font-size:11px;color:var(--dim)">/ 22 950 €</span></div></div>' +
-      '<div class="kpi"><div class="k-lbl">Liquidités en poche</div><div class="k-val">' + eur(G.cash) + '</div></div></div>' +
-      '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Mouvements entre poches</h2><input type="number" class="mini" id="bankAmt" placeholder="Montant €" min="1">' +
+      '<div class="kpi"><div class="k-lbl">Livret A (' + bd.lv + ' %)</div><div class="k-val">' + eur(G.bank.livret) + ' <span style="font-size:11px;color:var(--dim)">/ 22 950 €</span></div></div>' +
+      '<div class="kpi"><div class="k-lbl">Liquide</div><div class="k-val">' + eur(G.cash) + '</div></div></div>' +
+      '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Mouvements</h2><input type="number" class="mini" id="bankAmt" placeholder="Montant €" min="1">' +
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn" data-act="deposit">Liquide → compte</button><button class="btn" data-act="withdraw">Compte → liquide</button><button class="btn btn-primary" data-act="toLivret">Compte → Livret A</button><button class="btn btn-primary" data-act="fromLivret">Livret A → compte</button></div>' +
-      '<h3>Prélèvements mensuels (toutes les 60 s)</h3>' + (prelev.length ? prelev.map(([l,m]) => '<div class="rowline"><div class="lbl">' + l + '</div><span class="money neg">−' + eur(m) + '</span></div>').join('') : '<div class="empty">Aucun prélèvement récurrent.</div>') + '</div>' +
-      '<div class="panel"><h2>Crédits</h2><input type="number" class="mini" id="loanAmt" placeholder="Montant emprunté €" min="1000"><div style="display:flex;gap:8px;margin-top:12px">' + DATA.loans.map(l => '<button class="btn btn-sm" data-act="loanTake" data-t="' + l.id + '">' + l.n + ' (' + l.rate + ' %)</button>').join('') + '</div><h3>En cours</h3>' + loans + '</div></div>' +
-      '<div class="panel"><h2>Relevé de compte (dernières opérations)</h2><table class="t"><tr><th>Heure</th><th>Libellé</th><th>Montant</th></tr>' + jrn + '</table></div>';
+      '<h3>Prélèvements mensuels</h3>' + (prelev.length ? prelev.map(([l,m]) => '<div class="rowline"><div class="lbl">' + l + '</div><span class="money neg">−' + eur(m) + '</span></div>').join('') : '<div class="empty">Aucun.</div>') + '</div>' +
+      '<div class="panel"><h2>Crédits</h2><input type="number" class="mini" id="loanAmt" placeholder="Montant €" min="1000"><div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' + DATA.loans.map(l => '<button class="btn btn-sm" data-act="loanTake" data-t="' + l.id + '">' + l.n + ' (' + l.rate + ' %)</button>').join('') + '</div><h3>En cours</h3>' + loans + '</div></div>' +
+      '<div class="panel"><h2>Relevé</h2><table class="t"><tr><th>Heure</th><th>Libellé</th><th>Montant</th></tr>' + jrn + '</table></div>';
   }
 
   function rImmo() {
     const owned = G.houses.map((h,i) => { const hd = DATA.homes[h.i];
-      return '<div class="rowline"><div><div class="lbl">' + hd.n + '</div><div class="det">Valeur <span class="money" id="pv' + i + '">' + eur(h.v) + '</span> · charges ' + eur(h.c) + '/mois · loyer ' + eur(h.rent) + '/s ' + (h.tenant ? '· <span class="chip green">LOUÉ</span>' : '') + '</div></div><div style="display:flex;gap:8px"><button class="btn btn-sm" data-act="rentOut" data-i="' + i + '">' + (h.tenant ? 'Donner congé' : 'Mettre en location') + '</button><button class="btn btn-sm btn-danger" data-act="sellHome" data-i="' + i + '">Vendre</button></div></div>'; }).join('') || '<div class="empty">Aucun bien en portefeuille.</div>';
-    return '<h1>Immobilier</h1><div class="sub">Les prix évoluent en continu. Achetez bas, revendez haut, ou encaissez des loyers versés sur le compte.</div>' +
-      (G.rental ? '<div class="panel"><h2>Votre location actuelle</h2><div class="rowline"><div class="lbl">' + DATA.rentals[G.rental.i].n + ' — ' + eur(G.rental.loyer) + '/mois</div><button class="btn btn-sm btn-danger" data-act="cancelRent">Résilier le bail</button></div></div>'
-       : '<div class="panel"><h2>Se loger — locations</h2>' + DATA.rentals.map((r,i) => '<div class="rowline"><div class="lbl">' + r.n + '</div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(r.loyer) + '/mois</span><button class="btn btn-sm btn-primary" data-act="rentHome" data-i="' + i + '">Signer le bail</button></div></div>').join('') + '</div>') +
-      '<div class="panel"><h2>Votre patrimoine</h2>' + owned + '</div>' +
-      '<div class="panel"><h2>Biens en vente</h2>' + DATA.homes.map((h,i) => '<div class="rowline"><div><div class="lbl">' + h.n + '</div><div class="det">Charges ' + eur(h.c) + '/mois · confort +' + Math.min(10, h.p/60000).toFixed(1) + '</div></div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(h.p) + '</span><button class="btn btn-sm btn-primary" data-act="buyHome" data-i="' + i + '">Acheter</button></div></div>').join('') + '</div>';
+      return '<div class="rowline"><div><div class="lbl">' + hd.n + '</div><div class="det">' + eur(h.v) + ' · charges ' + eur(h.c) + '/mois ' + (h.tenant ? '· LOUÉ' : '') + '</div></div><div style="display:flex;gap:8px"><button class="btn btn-sm" data-act="rentOut" data-i="' + i + '">' + (h.tenant ? 'Congé' : 'Louer') + '</button><button class="btn btn-sm btn-danger" data-act="sellHome" data-i="' + i + '">Vendre</button></div></div>'; }).join('') || '<div class="empty">Aucun bien.</div>';
+    return '<h1>Immobilier</h1><div class="sub">Prix en continu.</div>' +
+      (G.rental ? '<div class="panel"><h2>Location</h2><div class="rowline"><div class="lbl">' + DATA.rentals[G.rental.i].n + ' ' + eur(G.rental.loyer) + '/mois</div><button class="btn btn-sm btn-danger" data-act="cancelRent">Résilier</button></div></div>'
+       : '<div class="panel"><h2>Locations</h2>' + DATA.rentals.map((r,i) => '<div class="rowline"><div class="lbl">' + r.n + '</div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(r.loyer) + '/mois</span><button class="btn btn-sm btn-primary" data-act="rentHome" data-i="' + i + '">Signer</button></div></div>').join('') + '</div>') +
+      '<div class="panel"><h2>Patrimoine</h2>' + owned + '</div>' +
+      '<div class="panel"><h2>En vente</h2>' + DATA.homes.map((h,i) => '<div class="rowline"><div><div class="lbl">' + h.n + '</div><div class="det">Charges ' + eur(h.c) + '/mois</div></div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(h.p) + '</span><button class="btn btn-sm btn-primary" data-act="buyHome" data-i="' + i + '">Acheter</button></div></div>').join('') + '</div>';
   }
 
   function rAuto() {
-    return '<h1>Concessionnaire</h1><div class="sub">Une voiture améliore votre productivité — et peut tomber en panne.</div>' +
-      (G.cars.length ? '<div class="panel"><h2>Votre garage</h2>' + G.cars.map(i => '<div class="rowline"><div class="lbl">' + DATA.cars[i].n + '</div><div style="display:flex;gap:10px;align-items:center"><span class="chip green">+' + Math.round(DATA.cars[i].b*100) + ' %</span><button class="btn btn-sm btn-danger" data-act="sellCar" data-i="' + i + '">Revendre (' + eur(DATA.cars[i].p*0.6) + ')</button></div></div>').join('') + '</div>' : '') +
-      '<div class="panel">' + DATA.cars.map((c,i) => '<div class="rowline"><div><div class="lbl">' + c.n + '</div><div class="det">Bonus productivité +' + Math.round(c.b*100) + ' %</div></div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(c.p) + '</span><button class="btn btn-sm btn-primary" data-act="buyCar" data-i="' + i + '" ' + (G.cars.includes(i) ? 'disabled' : '') + '>Acheter</button></div></div>').join('') + '</div>';
+    return '<h1>Concessionnaire</h1><div class="sub">Bonus productivité.</div>' +
+      (G.cars.length ? '<div class="panel"><h2>Garage</h2>' + G.cars.map(i => '<div class="rowline"><div class="lbl">' + DATA.cars[i].n + '</div><div style="display:flex;gap:10px;align-items:center"><span class="chip green">+' + Math.round(DATA.cars[i].b*100) + ' %</span><button class="btn btn-sm btn-danger" data-act="sellCar" data-i="' + i + '">Revendre (' + eur(DATA.cars[i].p*0.6) + ')</button></div></div>').join('') + '</div>' : '') +
+      '<div class="panel">' + DATA.cars.map((c,i) => '<div class="rowline"><div><div class="lbl">' + c.n + '</div><div class="det">+' + Math.round(c.b*100) + ' %</div></div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(c.p) + '</span><button class="btn btn-sm btn-primary" data-act="buyCar" data-i="' + i + '" ' + (G.cars.includes(i) ? 'disabled' : '') + '>Acheter</button></div></div>').join('') + '</div>';
   }
 
   function rAssur() {
-    return '<h1>Assurances & mutuelles</h1><div class="sub">Couverture contre frais de santé, pannes et sinistres. Cotisation prélevée chaque mois sur le compte.</div><div class="panel">' +
+    return '<h1>Assurances</h1><div class="sub">Prélèvement mensuel.</div><div class="panel">' +
       DATA.insurers.map(a => { const on = G.insurances.includes(a.id);
         return '<div class="rowline"><div><div class="lbl">' + a.n + '</div><div class="det">' + a.d + '</div></div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(a.m) + '/mois</span><button class="btn btn-sm ' + (on ? 'btn-danger' : 'btn-primary') + '" data-act="insure" data-id="' + a.id + '">' + (on ? 'Résilier' : 'Souscrire') + '</button></div></div>'; }).join('') + '</div>' +
-      '<div class="panel"><h2>Couverture actuelle</h2><div class="sub" style="margin:0">Prise en charge : <b style="color:var(--green)">' + Math.round(cov()*100) + ' %</b></div></div>';
+      '<div class="panel"><h2>Couverture</h2><div class="sub" style="margin:0"><b style="color:var(--green)">' + Math.round(cov()*100) + ' %</b></div></div>';
   }
 
   function rEco() {
-    return '<h1>Économie nationale</h1><div class="sub">800 citoyens actifs · météo actuelle : <b>' + weatherChip() + '</b> (modifie la fréquentation des commerces toutes les 3 min).</div>' +
-      '<div class="grid3"><div class="kpi"><div class="k-lbl">Indice HL-CAC</div><div class="k-val" id="idxCac">' + W.idx.cac.toFixed(0) + '</div><canvas class="chart" id="chCac"></canvas></div>' +
-      '<div class="kpi"><div class="k-lbl">Indice Immobilier</div><div class="k-val" id="idxImmo">' + W.idx.immo.toFixed(1) + '</div><canvas class="chart" id="chImmo"></canvas></div>' +
-      '<div class="kpi"><div class="k-lbl">Indice Consommation</div><div class="k-val" id="idxConso">' + W.idx.conso.toFixed(1) + '</div><canvas class="chart" id="chConso"></canvas></div></div>' +
-      '<div class="panel" style="margin-top:18px"><h2>Votre performance nette (90 dernières secondes)</h2><canvas class="chart" id="chNet" style="height:150px"></canvas></div>' +
-      '<div class="grid2"><div class="panel"><h2>Entreprises de la ville</h2><table class="t"><tr><th>Entreprise</th><th>Secteur</th><th>Direction</th><th>Santé</th></tr>' +
-      W.biz.map(b => '<tr><td>' + esc(b.n) + '</td><td style="color:var(--mut)">' + esc(b.s) + '</td><td style="color:var(--mut)">' + esc(b.boss||'—') + '</td><td><div style="display:flex;align-items:center"><div class="bar ' + (b.sante > 60 ? 'b-green' : b.sante > 35 ? 'b-orange' : 'b-red') + '" style="margin:0"><div class="fill" style="width:' + b.sante + '%"></div></div><span class="mono" style="margin-left:8px;font-size:11px">' + Math.round(b.sante) + '</span></div></td></tr>').join('') + '</table></div>' +
-      '<div class="panel"><h2>Journal économique en direct</h2><div id="feedZone"></div></div></div>';
+    return '<h1>Économie</h1><div class="sub">800 citoyens · ' + weatherChip() + '</div>' +
+      '<div class="grid3"><div class="kpi"><div class="k-lbl">CAC HL</div><div class="k-val" id="idxCac">' + W.idx.cac.toFixed(0) + '</div><canvas class="chart" id="chCac"></canvas></div>' +
+      '<div class="kpi"><div class="k-lbl">Immo</div><div class="k-val" id="idxImmo">' + W.idx.immo.toFixed(1) + '</div><canvas class="chart" id="chImmo"></canvas></div>' +
+      '<div class="kpi"><div class="k-lbl">Conso</div><div class="k-val" id="idxConso">' + W.idx.conso.toFixed(1) + '</div><canvas class="chart" id="chConso"></canvas></div></div>' +
+      '<div class="panel" style="margin-top:18px"><h2>Performance nette</h2><canvas class="chart" id="chNet" style="height:150px"></canvas></div>' +
+      '<div class="grid2"><div class="panel"><h2>Entreprises</h2><table class="t"><tr><th>Entreprise</th><th>Santé</th></tr>' +
+      W.biz.map(b => '<tr><td>' + esc(b.n) + '</td><td><div style="display:flex;align-items:center"><div class="bar ' + (b.sante > 60 ? 'b-green' : b.sante > 35 ? 'b-orange' : 'b-red') + '" style="margin:0"><div class="fill" style="width:' + b.sante + '%"></div></div><span class="mono" style="margin-left:8px;font-size:11px">' + Math.round(b.sante) + '</span></div></td></tr>').join('') + '</table></div>' +
+      '<div class="panel"><h2>Journal</h2><div id="feedZone"></div></div></div>';
+  }
+
+  function rBourse() {
+    const stockVal = Object.entries(G.portfolio.stocks).reduce((sum, [id, qty]) => { const s = W.stocks.find(x => x.id === id); return sum + (s ? s.price * qty : 0); }, 0);
+    const cryptoVal = Object.entries(G.portfolio.cryptos).reduce((sum, [id, qty]) => { const c = W.cryptos.find(x => x.id === id); return sum + (c ? c.price * qty : 0); }, 0);
+    return '<h1>Bourse & Crypto</h1><div class="sub">Prix en temps réel · dividendes versés chaque minute.</div>' +
+      '<div class="grid3"><div class="kpi"><div class="k-lbl">Portefeuille actions</div><div class="k-val" style="color:var(--gold)">' + eur(stockVal) + '</div></div>' +
+      '<div class="kpi"><div class="k-lbl">Portefeuille crypto</div><div class="k-val" style="color:var(--gold)">' + eur(cryptoVal) + '</div></div>' +
+      '<div class="kpi"><div class="k-lbl">Total investi</div><div class="k-val">' + eur(stockVal + cryptoVal) + '</div></div></div>' +
+      '<div class="panel"><h2>Actions</h2><input type="number" class="mini" id="stockQty" placeholder="Quantité" value="1" min="1" style="margin-bottom:12px"><div class="grid2">' +
+      W.stocks.map(s => '<div class="panel" style="margin:0;padding:14px"><div class="rowline" style="padding:0"><div><div class="lbl">' + s.n + '</div><div class="det">Possédé : ' + (G.portfolio.stocks[s.id]||0) + '</div></div><span class="money">' + eur(s.price) + '</span></div>' +
+      '<canvas class="chart" id="sp_' + s.id + '" style="height:80px;margin:10px 0"></canvas>' +
+      '<div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-act="buyStock" data-id="' + s.id + '">Acheter</button><button class="btn btn-sm" data-act="sellStock" data-id="' + s.id + '">Vendre</button></div></div>').join('') + '</div></div>' +
+      '<div class="panel"><h2>Cryptomonnaies</h2><input type="number" class="mini" id="cryptoQty" placeholder="Quantité (ex: 0.05)" value="0.01" step="0.01" min="0.001" style="margin-bottom:12px"><div class="grid2">' +
+      W.cryptos.map(c => '<div class="panel" style="margin:0;padding:14px"><div class="rowline" style="padding:0"><div><div class="lbl">' + c.n + '</div><div class="det">Possédé : ' + ((G.portfolio.cryptos[c.id]||0).toFixed(4)) + '</div></div><span class="money">' + eur(c.price) + '</span></div>' +
+      '<canvas class="chart" id="sp_' + c.id + '" style="height:80px;margin:10px 0"></canvas>' +
+      '<div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-act="buyCrypto" data-id="' + c.id + '">Acheter</button><button class="btn btn-sm" data-act="sellCrypto" data-id="' + c.id + '">Vendre</button></div></div>').join('') + '</div></div>';
+  }
+
+  function rSkills() {
+    return '<h1>Compétences</h1><div class="sub">Bonus permanents sur votre progression. Plus le niveau monte, plus le coût augmente.</div>' +
+      '<div class="grid2">' + DATA.skills.map(s => {
+        const lvl = skillLvl(s.id), maxed = lvl >= s.maxLvl;
+        const cost = maxed ? 0 : Math.round(s.costBase * Math.pow(s.costGrow, lvl));
+        return '<div class="skill-card"><div class="sk-head"><div class="sk-icon">' + s.icon + '</div><div style="flex:1"><div class="sk-name">' + s.n + '</div><div class="sk-desc">' + s.d + '</div></div></div>' +
+        '<div class="sk-level"><span class="chip gold">Niv. ' + lvl + ' / ' + s.maxLvl + '</span></div>' +
+        '<div class="sk-bar"><div class="bar b-gold"><div class="fill" style="width:' + (lvl/s.maxLvl*100) + '%"></div></div></div>' +
+        (maxed ? '<span class="chip green">MAX</span>' : '<button class="btn btn-primary btn-block" data-act="buySkill" data-id="' + s.id + '">Améliorer · ' + eur(cost) + '</button>') +
+        '</div>';
+      }).join('') + '</div>';
   }
 
   function rNoir() {
-    if (!G.ill.unlocked) return '<h1>Quartier interdit</h1><div class="sub">Un réseau opère en marge de la ville. L’entrée se paie, cash ou compte.</div><div class="panel" style="text-align:center;padding:44px"><div style="font-size:40px">🔒</div><p style="color:var(--mut);margin:14px 0 22px">Corrompre les bonnes personnes : <b class="money">' + eur(DATA.illEntry) + '</b></p><button class="btn btn-primary btn-lg" data-act="illUnlock">Payer le droit d’entrée</button></div>';
-    return '<h1>Marché noir</h1><div class="sub">Gains élevés, chaleur élevée. À 100 : garde à vue.</div>' +
-      '<div class="panel"><h2>Chaleur policière</h2><div style="display:flex;align-items:center"><div class="bar b-red"><div class="fill" id="heatBar" style="width:' + G.ill.heat + '%"></div></div><span class="mono" id="heatNum">' + Math.round(G.ill.heat) + '/100</span></div><div style="margin-top:12px"><button class="btn btn-sm" data-act="bribe">Pot-de-vin (800 € → −35 chaleur)</button></div></div>' +
+    if (!G.ill.unlocked) return '<h1>Quartier interdit</h1><div class="sub">Un réseau opère en marge.</div><div class="panel" style="text-align:center;padding:44px"><div style="font-size:40px">🔒</div><p style="color:var(--mut);margin:14px 0 22px">' + eur(DATA.illEntry) + '</p><button class="btn btn-primary btn-lg" data-act="illUnlock">Payer</button></div>';
+    return '<h1>Marché noir</h1><div class="sub">À 100 de chaleur : garde à vue.</div>' +
+      '<div class="panel"><h2>Chaleur</h2><div style="display:flex;align-items:center"><div class="bar b-red"><div class="fill" id="heatBar" style="width:' + G.ill.heat + '%"></div></div><span class="mono" id="heatNum">' + Math.round(G.ill.heat) + '/100</span></div><div style="margin-top:12px"><button class="btn btn-sm" data-act="bribe">Pot-de-vin (800 € → −35)</button></div></div>' +
       '<div class="panel">' + DATA.ill.map(a => { const ready = Date.now() >= (G.ill.cd[a.id]||0); const lock = a.reqBiz && !ownsBiz(a.reqBiz);
-        return '<div class="rowline"><div><div class="lbl">' + a.n + '</div><div class="det">' + a.d + ' · Mise ' + eur(a.cost) + ' · Gain ' + eur0(a.gain[0]) + '–' + eur0(a.gain[1]) + ' · Risque ' + Math.round(a.risk*100) + ' %' + (lock ? ' · <b style="color:var(--red)">Nécessite une banque</b>' : '') + '</div></div><button class="btn btn-sm btn-primary" data-act="illDo" data-id="' + a.id + '" ' + ((!ready||lock) ? 'disabled' : '') + '>' + (ready ? 'Exécuter' : 'Recharge…') + '</button></div>'; }).join('') + '</div>';
+        return '<div class="rowline"><div><div class="lbl">' + a.n + '</div><div class="det">' + a.d + ' · ' + eur(a.cost) + ' · ' + eur0(a.gain[0]) + '–' + eur0(a.gain[1]) + ' · ' + Math.round(a.risk*100) + ' % risque' + (lock ? ' · <b style="color:var(--red)">Nécessite banque</b>' : '') + '</div></div><button class="btn btn-sm btn-primary" data-act="illDo" data-id="' + a.id + '" ' + ((!ready||lock) ? 'disabled' : '') + '>' + (ready ? 'Exécuter' : 'Recharge…') + '</button></div>'; }).join('') + '</div>';
   }
 
   function rPlus() {
-    return '<h1>Boutique +</h1><div class="sub">Convertissez de vrais euros en capital de jeu. <b>Mode démo : paiements simulés.</b></div><div class="grid3">' +
-      DATA.packs.map(p => '<div class="panel" style="text-align:center;position:relative">' + (p.best ? '<span class="chip gold" style="position:absolute;top:-9px;left:50%;transform:translateX(-50%)">MEILLEURE OFFRE</span>' : '') + '<h2 style="margin-top:6px">' + p.n + '</h2><div style="font-family:var(--mono);font-size:30px;font-weight:700;color:var(--gold);margin:12px 0">' + eur0(p.amount) + '</div><div style="color:var(--mut);margin-bottom:16px">' + p.price + '</div><button class="btn btn-primary btn-block" data-act="buyPack" data-id="' + p.id + '">Acheter</button></div>').join('') + '</div>';
+    const pending = G.pendingPack ? DATA.packs.find(p => p.id === G.pendingPack) : null;
+    return '<h1>Boutique +</h1><div class="sub">Paiements Stripe sécurisés (mode test).</div>' +
+      (pending ? '<div class="panel" style="border-color:var(--gold);background:rgba(232,176,75,.08)"><h2>Paiement en attente</h2><p style="color:var(--mut);margin-bottom:14px">Vous avez payé le pack « ' + pending.n + ' » (' + pending.price + ') via Stripe ?</p>' +
+        '<div style="display:flex;gap:10px"><button class="btn btn-primary" data-act="confirmPack">Oui, j\'ai payé</button><button class="btn btn-ghost" data-act="cancelPack">Annuler</button></div></div>' : '') +
+      '<div class="grid3">' + DATA.packs.map(p => '<div class="panel" style="text-align:center;position:relative">' + (p.best ? '<span class="chip gold" style="position:absolute;top:-9px;left:50%;transform:translateX(-50%)">MEILLEURE OFFRE</span>' : '') + '<h2 style="margin-top:6px">' + p.n + '</h2><div style="font-family:var(--mono);font-size:30px;font-weight:700;color:var(--gold);margin:12px 0">' + eur0(p.amount) + '</div><div style="color:var(--mut);margin-bottom:16px">' + p.price + '</div><button class="btn btn-primary btn-block" data-act="buyPack" data-id="' + p.id + '">Acheter via Stripe</button></div>').join('') + '</div>';
   }
 
   function rProfil() {
     const age = Math.floor((Date.now() - G.created)/60000);
-    return '<h1>Profil citoyen</h1><div class="sub">Citoyen depuis ' + age + ' minute(s) réelle(s) · ' + esc(DB.label()) + '</div>' +
-      '<div class="grid2"><div class="panel"><h2>Statistiques</h2><table class="t"><tr><td>Revenus nets gagnés</td><td class="money">' + eur(G.stats.earned) + '</td></tr><tr><td>Impôts & cotisations</td><td class="money neg">' + eur(G.stats.tax) + '</td></tr><tr><td>Articles vendus</td><td>' + G.stats.sales + '</td></tr><tr><td>Commandes spéciales honorées</td><td>' + (G.stats.orders||0) + '</td></tr><tr><td>XP totale</td><td>' + G.xp + '</td></tr><tr><td>Postes actifs</td><td>' + G.jobs.length + ' (' + Math.round(totalLoad()*100) + ' % de charge)</td></tr><tr><td>Entreprises</td><td>' + G.biz.length + '</td></tr><tr><td>Biens immobiliers</td><td>' + G.houses.length + '</td></tr></table></div>' +
-      '<div class="panel"><h2>Compte</h2><div class="rowline"><div class="lbl">Pseudo</div><div>' + esc(G.name) + '</div></div><div class="rowline"><div class="lbl">Succès</div><div>' + G.ach.length + ' / ' + DATA.ach.length + '</div></div><div style="margin-top:16px;display:flex;gap:10px"><button class="btn btn-ghost" data-act="logout">Se déconnecter</button><button class="btn btn-danger" data-act="resetSave">Réinitialiser ma vie</button></div></div></div>' +
+    return '<h1>Profil</h1><div class="sub">' + age + ' minute(s) · ' + esc(DB.label()) + '</div>' +
+      '<div class="grid2"><div class="panel"><h2>Stats</h2><table class="t"><tr><td>Revenus</td><td class="money">' + eur(G.stats.earned) + '</td></tr><tr><td>Impôts</td><td class="money neg">' + eur(G.stats.tax) + '</td></tr><tr><td>Ventes</td><td>' + G.stats.sales + '</td></tr><tr><td>XP</td><td>' + G.xp + '</td></tr><tr><td>Postes</td><td>' + G.jobs.length + ' (' + Math.round(totalLoad()*100) + ' %)</td></tr><tr><td>Entreprises</td><td>' + G.biz.length + '</td></tr><tr><td>Immo</td><td>' + G.houses.length + '</td></tr><tr><td>Compétences</td><td>' + Object.values(G.skills).reduce((a,v)=>a+v,0) + '</td></tr></table></div>' +
+      '<div class="panel"><h2>Compte</h2><div class="rowline"><div class="lbl">Pseudo</div><div>' + esc(G.name) + '</div></div><div class="rowline"><div class="lbl">Succès</div><div>' + G.ach.length + '/' + DATA.ach.length + '</div></div><div style="margin-top:16px;display:flex;gap:10px"><button class="btn btn-ghost" data-act="logout">Déconnexion</button><button class="btn btn-danger" data-act="resetSave">Reset</button></div></div></div>' +
       '<div class="panel"><h2>Succès (' + G.ach.length + '/' + DATA.ach.length + ')</h2><div class="ach-grid">' +
       DATA.ach.map(a => { const on = G.ach.includes(a.id);
-        return '<div class="ach ' + (on ? 'on' : 'off') + '"><div class="a-i">' + a.i + '</div><div class="a-n">' + a.n + '</div><div class="a-d">' + a.d + ' · +' + a.xp + ' XP</div></div>'; }).join('') + '</div></div>';
+        return '<div class="ach ' + (on ? 'on' : 'off') + '"><div class="a-i">' + a.i + '</div><div class="a-n">' + a.n + '</div><div class="a-d">' + a.d + ' +' + a.xp + ' XP</div></div>'; }).join('') + '</div></div>';
   }
 
   function spark(cv, data, color) {
@@ -451,15 +523,15 @@ const UI = (() => {
     const c = el('tbCash');
     c.textContent = eur(T.cashDisp);
     c.classList.toggle('neg', bal < 0);
-    el('tbCashLbl').textContent = G.bank.bankId ? 'compte bancaire' : 'liquide en poche';
+    el('tbCashLbl').textContent = G.bank.bankId ? 'compte' : 'liquide';
     const v = G.vitals;
     el('barSante').style.width = v.sante + '%'; el('numSante').textContent = Math.round(v.sante);
     el('barFaim').style.width = v.faim + '%'; el('numFaim').textContent = Math.round(v.faim);
     el('barSoif').style.width = v.soif + '%'; el('numSoif').textContent = Math.round(v.soif);
     const st = el('vStatus');
-    if (bal < 0) { st.textContent = '⚠ Compte à découvert'; st.className = 'v-status bad'; }
-    else if (!hasShelter()) { st.textContent = '⚠ Sans domicile — jauges accélérées'; st.className = 'v-status bad'; }
-    else if (v.faim < 20 || v.soif < 20) { st.textContent = '⚠ Vous devriez manger / boire'; st.className = 'v-status warn'; }
+    if (bal < 0) { st.textContent = '⚠ Découvert'; st.className = 'v-status bad'; }
+    else if (!hasShelter()) { st.textContent = '⚠ Sans domicile'; st.className = 'v-status bad'; }
+    else if (v.faim < 20 || v.soif < 20) { st.textContent = '⚠ Manger / boire'; st.className = 'v-status warn'; }
     else { st.textContent = 'Citoyen en bonne santé'; st.className = 'v-status'; }
     const inf = G.tickInfo || { rev:0, chg:0, tax:0 };
     el('stRev').textContent = '+' + eur(inf.rev);
@@ -476,9 +548,8 @@ const UI = (() => {
     if (G.jail > Date.now()) { jo.hidden = false; el('jailT').textContent = Math.ceil((G.jail - Date.now())/1000); }
     else jo.hidden = true;
     const bb = el('boostBar');
-    if (G.boost) { bb.hidden = false; el('boostTxt').textContent = '⚡ Opportunité : ' + G.boost.label + ' — ' + G.boost.type + ' ×' + G.boost.mul; el('boostCd').textContent = Math.max(0, Math.ceil((G.boost.until - Date.now())/1000)) + ' s'; }
+    if (G.boost) { bb.hidden = false; el('boostTxt').textContent = '⚡ ' + G.boost.label + ' ×' + G.boost.mul; el('boostCd').textContent = Math.max(0, Math.ceil((G.boost.until - Date.now())/1000)) + ' s'; }
     else bb.hidden = true;
-    /* loto : countdown live */
     const lb = el('lottoBtn'), lc = el('lottoCd');
     if (lb && lc) { const cd = Math.max(0, Math.ceil(((G.lottoCd||0) - Date.now())/1000)); lb.hidden = cd > 0; lc.hidden = cd <= 0; lc.textContent = cd + ' s'; }
     if (T.tab === 'carriere' && G.training) { const e = el('trainRest'); if (e) e.textContent = Math.max(0, Math.ceil((G.training.end - Date.now())/1000)) + ' s'; }
@@ -494,8 +565,8 @@ const UI = (() => {
   }
 
   function buildTicker() {
-    const items = DATA.news.concat(W.biz.slice(0,6).map(b => b.n + ' : ' + (b.sante > 65 ? '<span class="up">en forme</span>' : '<span class="dn">ralentit</span>'))).map(x => '◆ ' + x).join('&nbsp;&nbsp;&nbsp;');
-    el('ticker').innerHTML = '<b>HEXALIFE ÉCO</b>&nbsp;&nbsp;&nbsp;' + items + '&nbsp;&nbsp;&nbsp;◆ CAC HL ' + W.idx.cac.toFixed(0);
+    const items = DATA.news.concat(W.biz.slice(0,6).map(b => b.n + ' : ' + (b.sante > 65 ? '<span class="up">forme</span>' : '<span class="dn">ralentit</span>'))).map(x => '◆ ' + x).join('&nbsp;&nbsp;&nbsp;');
+    el('ticker').innerHTML = '<b>HEXALIFE ÉCO</b>&nbsp;&nbsp;&nbsp;' + items;
   }
 
   document.addEventListener('change', e => {
@@ -508,5 +579,5 @@ const UI = (() => {
     if (t.dataset.act === 'jobQ') { clearTimeout(T.qT); T.qT = setTimeout(() => { T.jobF.q = t.value; UI.render(); const inp = document.querySelector('[data-act="jobQ"]'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }, 300); }
   });
 
-  return { toast, feed, floatText, pulseVital, moneyFx, cardFx, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto };
+  return { toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto };
 })();
