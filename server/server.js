@@ -68,7 +68,7 @@ async function persistNow() {
 }
 
 let saveTimer = null;
-function persist() {           /* debounce : évite d'écrire à chaque requête */
+function persist() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
@@ -76,7 +76,6 @@ function persist() {           /* debounce : évite d'écrire à chaque requête
   }, 400);
 }
 
-/* filet de sécurité : sauvegarde périodique + flush propre à l'arrêt */
 setInterval(() => { persistNow().catch(() => {}); }, 30000);
 process.on('SIGTERM', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
 process.on('SIGINT', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
@@ -173,6 +172,54 @@ const server = http.createServer(async (req, res) => {
         const a = authUser(req);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
         DB.saves[a.name] = body.state; persist();
+        return json(res, 200, { ok: true });
+      }
+
+      /* ── Banques fondées par les joueurs (listées pour tous) ── */
+      if (url === '/api/banks') {
+        const banks = [];
+        Object.keys(DB.saves).forEach(owner => {
+          const s = DB.saves[owner];
+          if (s && Array.isArray(s.biz)) {
+            s.biz.forEach((b, idx) => {
+              if (b && b.type === 'banque') {
+                banks.push({
+                  id: 'player:' + owner + ':' + idx,
+                  name: b.name || ('Banque ' + owner),
+                  owner: owner,
+                  livret: b.tauxLivret || 2,
+                  accounts: b.accounts || 0
+                });
+              }
+            });
+          }
+        });
+        return json(res, 200, { banks: banks });
+      }
+
+      /* ── Clients joueurs inscrits à MA banque (pour le propriétaire) ── */
+      if (url === '/api/banks/clients') {
+        const a = authUser(req);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        const prefix = 'player:' + a.name + ':';
+        const clients = [];
+        Object.keys(DB.saves).forEach(other => {
+          const s = DB.saves[other];
+          if (s && s.bank && typeof s.bank.bankId === 'string' && s.bank.bankId.indexOf(prefix) === 0) {
+            clients.push({ name: other, compte: s.bank.compte || 0, livret: s.bank.livret || 0 });
+          }
+        });
+        return json(res, 200, { clients: clients });
+      }
+
+      /* ── Suppression définitive du compte ── */
+      if (url === '/api/delete' && req.method === 'POST') {
+        const a = authUser(req);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        delete DB.users[a.name];
+        delete DB.saves[a.name];
+        delete DB.sessions[a.token];
+        persist();
         return json(res, 200, { ok: true });
       }
 
