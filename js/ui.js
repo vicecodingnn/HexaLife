@@ -1,4 +1,4 @@
-/* ═══════════ INTERFACE v8 — carte 3D, santé, banques joueurs, boutique animée ═══════════ */
+/* ═══════════ INTERFACE v9 — render silencieux, présence live, clients riches ═══════════ */
 const UI = (() => {
   const el = id => document.getElementById(id);
 
@@ -29,17 +29,18 @@ const UI = (() => {
 
   const TUTO = [
     { sel:null, t:'Bienvenue dans HEXALIFE', x:'2 000 € en liquide, un compte à ouvrir, des compétences à développer. 9 étapes pour maîtriser la ville.' },
-    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim, soif baissent en continu. Mangez depuis l\'Inventaire, soignez-vous dans Santé.' },
-    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré défile jusqu\'à la valeur à chaque mouvement. La carte bleue s\'anime.' },
+    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim, soif baissent en continu. Mangez depuis l’Inventaire, soignez-vous dans Santé.' },
+    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré défile jusqu’à la valeur à chaque mouvement. La carte bleue s’anime.' },
     { sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges, net par seconde — tout vit en temps réel.' },
     { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Temps plein exclusif ou partiel cumulable.' },
-    { sel:'[data-id="marche"]', t:'Les courses', x:'Tout part dans l\'Inventaire.' },
+    { sel:'[data-id="marche"]', t:'Les courses', x:'Tout part dans l’Inventaire.' },
     { sel:'[data-id="banque"]', t:'Votre banque', x:'Ouvrez un compte : salaires et impôts passent par là.' },
     { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Panneau complet : production, marketing, RH, améliorations.' },
     { sel:null, t:'À vous de jouer !', x:'Défis, quêtes, santé, banques de joueurs… Bonus : 100 €.' }
   ];
 
   let feedItems = [];
+  let presenceStarted = false;
 
   function toast(msg, type = '') {
     const t = document.createElement('div');
@@ -110,6 +111,35 @@ const UI = (() => {
     setTimeout(() => s.textContent = 'Sauvegarde auto active', 1500);
   }
 
+  /* ── Badge joueurs en ligne (injecté à côté du niveau) ── */
+  function ensureOnlineBadge() {
+    if (el('tbOnline')) return;
+    const lvl = document.querySelector('.tb-lvl');
+    if (!lvl || !lvl.parentNode) return;
+    const d = document.createElement('div');
+    d.className = 'tb-online'; d.id = 'tbOnline'; d.title = 'Joueurs connectés en direct';
+    d.innerHTML = '<span class="on-dot"></span><span id="tbOnlineN">…</span>';
+    lvl.parentNode.insertBefore(d, lvl.nextSibling);
+  }
+  async function pingNow() {
+    try {
+      const j = await DB.authFetch('/api/ping', { method: 'POST' });
+      const n = el('tbOnlineN');
+      if (j && typeof j.count === 'number') {
+        if (n) n.textContent = j.count;
+        const dot = document.querySelector('.on-dot'); if (dot) dot.classList.add('live');
+      } else if (n) n.textContent = '0';
+    } catch (e) {
+      const n = el('tbOnlineN'); if (n) n.textContent = '0';
+    }
+  }
+  function startPresence() {
+    if (presenceStarted) return;
+    presenceStarted = true;
+    pingNow();
+    setInterval(pingNow, 20000);
+  }
+
   function buildRail() {
     const claimable = G.missions.list ? G.missions.list.filter(m => m.prog >= m.tgt && !m.claimed).length : 0;
     el('rail').innerHTML = NAV.map(([id,lbl,lock]) =>
@@ -165,7 +195,6 @@ const UI = (() => {
   }
   function tutoSkip() { G.tuto = -1; placeTuto(); toast('Tutoriel passé.', ''); save(); }
 
-  /* Carte bancaire 3D réutilisable */
   function bankCardHTML(balance, bankName, holder, small) {
     return '<div class="bankcard' + (small ? ' small' : '') + '"><div class="bc-shine"></div>' +
       '<div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">HEXAPAY</span></div>' +
@@ -174,15 +203,30 @@ const UI = (() => {
       '<div style="text-align:right"><div class="bc-lbl">' + esc(bankName) + '</div><div class="bc-bal">' + eur(balance) + '</div></div></div></div>';
   }
 
-  function render() {
+  /* ── RENDER : silent = pas d'anim, scroll + inputs préservés ── */
+  function render(silent) {
     updateTop();
+    ensureOnlineBadge();
+    startPresence();
+    const v = el('view');
+    const st = v.scrollTop;
+    const savedInputs = {};
+    if (silent) {
+      v.classList.add('no-anim');
+      v.querySelectorAll('input').forEach(i => { if (i.id) savedInputs[i.id] = i.value; });
+    }
     const R = {
       vie:rVie, inventaire:rInv, carriere:rCarriere, marche:rMarche,
       entreprises:rEntreprises, banque:rBanque, immobilier:rImmo, auto:rAuto,
       assurances:rAssur, sante:rSante, skills:rSkills,
       economie:rEco, noir:rNoir, plus:rPlus, profil:rProfil
     };
-    el('view').innerHTML = (R[T.tab] || rVie)();
+    v.innerHTML = (R[T.tab] || rVie)();
+    v.scrollTop = st;
+    if (silent) {
+      Object.keys(savedInputs).forEach(id => { const e = el(id); if (e) e.value = savedInputs[id]; });
+      requestAnimationFrame(() => v.classList.remove('no-anim'));
+    }
     if (T.tab === 'vie' || T.tab === 'economie') renderFeedZone();
     if (T.tab === 'economie') drawCharts();
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && (T.bizTab === 'overview' || T.bizTab === 'compta'))
@@ -197,7 +241,7 @@ const UI = (() => {
 
   function loadPlayerBanks() {
     const host = el('playerBanksList'); if (!host) return;
-    fetch('/api/banks').then(r => r.json()).then(j => {
+    DB.authFetch('/api/banks').then(j => {
       const list = (j && j.banks) || [];
       host.innerHTML = list.length ? list.map(b =>
         '<div class="bank-offer" data-act="bankDetails" data-id="' + esc(b.id) + '" data-name="' + esc(b.name) + '" data-rate="' + b.livret + '" data-owner="' + esc(b.owner) + '" data-accounts="' + b.accounts + '">' +
@@ -207,11 +251,17 @@ const UI = (() => {
   }
   function loadExtClients() {
     const host = el('extClients'); if (!host) return;
-    fetch('/api/banks/clients').then(r => r.json()).then(j => {
+    DB.authFetch('/api/banks/clients').then(j => {
       const list = (j && j.clients) || [];
       host.innerHTML = list.length ? list.map(c =>
-        '<div class="rowline"><div><div class="lbl">' + esc(c.name) + '</div><div class="det">Compte : ' + eur(c.compte) + ' · Livret : ' + eur(c.livret) + '</div></div><span class="chip green">CLIENT</span></div>'
-      ).join('') : '<div class="empty">Aucun joueur externe inscrit à votre banque.</div>';
+        '<div class="rowline"><div style="flex:1"><div class="lbl">' + esc(c.name) + (c.online ? ' <span class="chip green">EN LIGNE</span>' : '') + '</div>' +
+        '<div class="det">Compte : <span class="money">' + eur(c.compte) + '</span> · Livret : <span class="money">' + eur(c.livret) + '</span></div>' +
+        '<div class="det">' + c.jobs + ' job(s) · ' + c.biz + ' entreprise(s)</div>' +
+        (c.loans && c.loans.length
+          ? '<div class="det">Prêts : ' + c.loans.map(L => esc(L.n) + ' (reste ' + eur(L.reste) + ', ' + eur(L.mens) + '/mois)').join(' · ') + '</div>'
+          : '<div class="det">Aucun prêt en cours</div>') +
+        '</div><span class="chip gold">CLIENT</span></div>'
+      ).join('') : '<div class="empty">Aucun joueur externe inscrit à votre banque pour le moment.</div>';
     }).catch(() => { host.innerHTML = '<div class="empty">Clients externes indisponibles hors-ligne.</div>'; });
   }
 
@@ -269,7 +319,7 @@ const UI = (() => {
     if (!entries.length) return '<h1>Inventaire</h1><div class="sub">Votre sac est vide.</div>' +
       '<div class="panel" style="text-align:center;padding:40px"><div style="font-size:38px">🎒</div><p class="empty">Rien à consommer.</p>' +
       '<button class="btn btn-primary" data-act="tab" data-id="marche">Aller aux courses</button></div>';
-    return '<h1>Inventaire</h1><div class="sub">Cliquez pour consommer. Attention : trop manger (>100) rend malade.</div>' +
+    return '<h1>Inventaire</h1><div class="sub">Cliquez pour consommer. Trop manger (>100) peut rendre malade.</div>' +
       '<div class="inv-grid">' + entries.map(([id,q],k) => { const f = foodById(id);
         return '<div class="inv-card" style="animation-delay:' + (k*0.04) + 's"><span class="qty">×' + q + '</span><div style="font-size:30px">' + f.ico + '</div>' +
         '<div class="nm">' + f.n + '</div><div class="fx">' + (f.f ? 'Faim +' + f.f : '') + (f.f && f.s ? ' · ' : '') + (f.s ? 'Soif +' + f.s : '') + '</div>' +
@@ -304,7 +354,7 @@ const UI = (() => {
       train = '<div class="panel"><h2>Formation en cours</h2><div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">Dans <span class="mono" id="trainRest">' + Math.max(0, Math.ceil((G.training.end - Date.now())/1000)) + ' s</span></div></div><span class="chip gold">EN COURS</span></div></div>'; }
     const forms = DATA.form.map(f => { const done = G.diplomas.includes(f.id);
       return '<div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">' + f.d + ' · ' + (f.cost ? eur(f.cost) : 'Gratuit') + '</div></div>' +
-      (done ? '<span class="chip green">OBTENU</span>' : '<button class="btn btn-sm btn-primary" data-act="train" data-id="' + f.id + '">S\'inscrire</button>') + '</div>'; }).join('');
+      (done ? '<span class="chip green">OBTENU</span>' : '<button class="btn btn-sm btn-primary" data-act="train" data-id="' + f.id + '">S’inscrire</button>') + '</div>'; }).join('');
     return '<h1>Formation & Emploi</h1><div class="sub">Tier ' + playerTier() + ' · Plein = 1 job · Partiel = cumulable.</div>' +
       train +
       '<div class="panel"><h2>Mes postes</h2><div style="display:flex;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--mut)">Charge</span><div class="bar b-gold"><div class="fill" style="width:' + loadPct + '%"></div></div><span class="mono" style="font-size:12px">' + loadPct + ' %</span></div>' + mine + '</div>' +
@@ -323,7 +373,7 @@ const UI = (() => {
   }
 
   function bizTabs(b) {
-    const tabs = [['overview','Vue d\'ensemble']];
+    const tabs = [['overview','Vue d’ensemble']];
     if (b.type === 'boulangerie' || b.type === 'magasin') tabs.push(['prod','Production']);
     tabs.push(['mkt','Marketing']); tabs.push(['hr','RH']); tabs.push(['ups','Améliorations']); tabs.push(['compta','Compta']);
     return '<div class="biz-tabs">' + tabs.map(([id,lbl]) => '<button class="biz-tab' + (T.bizTab === id ? ' active' : '') + '" data-act="bizTab" data-t="' + id + '">' + lbl + '</button>').join('') + '</div>';
@@ -517,7 +567,7 @@ const UI = (() => {
     const pending = G.pendingPack ? DATA.packs.find(p => p.id === G.pendingPack) : null;
     return '<h1>Boutique +</h1><div class="sub">Paiements Stripe sécurisés (mode test).</div>' +
       (pending ? '<div class="panel" style="border-color:var(--gold);background:rgba(232,176,75,.08)"><h2>Paiement en attente</h2><p style="color:var(--mut);margin-bottom:14px">Pack « ' + pending.n + ' » (' + pending.price + ') payé via Stripe ?</p>' +
-        '<div style="display:flex;gap:10px"><button class="btn btn-primary" data-act="confirmPack">Oui, j\'ai payé</button><button class="btn btn-ghost" data-act="cancelPack">Annuler</button></div></div>' : '') +
+        '<div style="display:flex;gap:10px"><button class="btn btn-primary" data-act="confirmPack">Oui, j’ai payé</button><button class="btn btn-ghost" data-act="cancelPack">Annuler</button></div></div>' : '') +
       '<div class="pack-grid">' + DATA.packs.map((p,k) =>
         '<div class="pack-card" style="animation-delay:' + (k*0.08) + 's">' + (p.best ? '<span class="pack-best">MEILLEURE OFFRE</span>' : '') +
         '<div class="pack-glow"></div><div class="pack-amt">' + eur0(p.amount) + '</div><div class="pack-name">' + p.n + '</div>' +
@@ -602,7 +652,7 @@ const UI = (() => {
     }
     if (T.tab === 'noir' && G.ill.unlocked) { const hb = el('heatBar'); if (hb) hb.style.width = G.ill.heat + '%'; const hn = el('heatNum'); if (hn) hn.textContent = Math.round(G.ill.heat) + '/100'; }
     if (T.tab === 'immobilier') G.houses.forEach((h,i) => { const e = el('pv'+i); if (e) e.textContent = eur(h.v); });
-    if (T.tab === 'entreprises' && T.selBiz >= 0 && T.bizTab === 'mkt' && W.t % 5 === 0) render();
+    if (T.tab === 'entreprises' && T.selBiz >= 0 && T.bizTab === 'mkt' && W.t % 5 === 0) render(true);
   }
 
   function buildTicker() {
@@ -612,12 +662,12 @@ const UI = (() => {
 
   document.addEventListener('change', e => {
     const t = e.target.closest('[data-act]'); if (!t || !G) return;
-    if (t.dataset.act === 'jobSec') { T.jobF.sec = t.value; UI.render(); }
-    if (t.dataset.act === 'jobOk') { T.jobF.ok = t.checked; UI.render(); }
+    if (t.dataset.act === 'jobSec') { T.jobF.sec = t.value; UI.render(true); }
+    if (t.dataset.act === 'jobOk') { T.jobF.ok = t.checked; UI.render(true); }
   });
   document.addEventListener('input', e => {
     const t = e.target.closest('[data-act]'); if (!t || !G) return;
-    if (t.dataset.act === 'jobQ') { clearTimeout(T.qT); T.qT = setTimeout(() => { T.jobF.q = t.value; UI.render(); const inp = document.querySelector('[data-act="jobQ"]'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }, 300); }
+    if (t.dataset.act === 'jobQ') { clearTimeout(T.qT); T.qT = setTimeout(() => { T.jobF.q = t.value; UI.render(true); const inp = document.querySelector('[data-act="jobQ"]'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }, 300); }
   });
 
   return { toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails };
