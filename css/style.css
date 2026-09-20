@@ -400,6 +400,36 @@ select.mini{padding:8px 10px;background:#0d151a;border:1px solid var(--line);bor
 @keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.45}}
 @media(max-width:1000px){ .tb-online{margin-left:6px;padding:3px 8px;font-size:11px} }
 
+/* ═══════════ v10 : transferts, annonces, admin, animations ═══════════ */
+.moneyfly{position:fixed;inset:0;pointer-events:none;z-index:96;overflow:hidden}
+.mf-bill{position:absolute;font-family:var(--mono);font-weight:800;color:var(--gold);font-size:22px;text-shadow:0 2px 8px rgba(0,0,0,.5);animation:mfFly 1.6s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes mfFly{0%{opacity:0;transform:translate(0,0) rotate(0)}15%{opacity:1}100%{opacity:0;transform:translate(var(--dx),-320px) rotate(320deg)}}
+.moneyrain{position:fixed;inset:0;pointer-events:none;z-index:96;overflow:hidden}
+.mr-bill{position:absolute;top:-30px;font-family:var(--mono);font-weight:800;color:var(--gold2);text-shadow:0 2px 10px rgba(232,176,75,.5);animation:mrFall 2.2s ease-in forwards}
+@keyframes mrFall{0%{opacity:0;transform:translateY(0) rotate(0)}10%{opacity:1}100%{opacity:.9;transform:translateY(105vh) rotate(540deg)}}
+
+/* Popup annonce */
+.ann-ov{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(4,7,10,.72);backdrop-filter:blur(6px);animation:fIn .3s ease both}
+.ann-ov.out{animation:fOut .4s ease both}
+@keyframes fOut{to{opacity:0}}
+.ann-glow{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,rgba(232,176,75,.22),transparent 60%);animation:annPulse 2.4s ease-in-out infinite}
+@keyframes annPulse{0%,100%{opacity:.6}50%{opacity:1}}
+.ann-card{position:relative;width:min(460px,90vw);background:linear-gradient(160deg,#1a2530,#141c24);border:1px solid var(--gold-dk);border-radius:18px;padding:38px 30px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6);animation:annIn .6s cubic-bezier(.2,1.2,.3,1) both;overflow:hidden}
+@keyframes annIn{0%{opacity:0;transform:scale(.6) rotate(-6deg)}60%{transform:scale(1.05) rotate(2deg)}100%{opacity:1;transform:scale(1) rotate(0)}}
+.ann-ring{position:absolute;top:-60px;left:50%;width:220px;height:220px;margin-left:-110px;border-radius:50%;background:conic-gradient(from 0deg,transparent,rgba(232,176,75,.5),transparent 40%);animation:holoSpin 3s linear infinite;filter:blur(6px)}
+.ann-mega{font-size:52px;position:relative;animation:megaBounce 1.2s ease-in-out infinite}
+@keyframes megaBounce{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-8px) rotate(8deg)}}
+.ann-biz{font-family:var(--disp);font-weight:800;font-size:24px;color:var(--gold);margin-top:8px;position:relative}
+.ann-text{color:var(--ink);font-size:15px;line-height:1.55;margin:14px 0 8px;position:relative}
+.ann-by{color:var(--dim);font-size:12px;margin-bottom:18px;position:relative}
+.ann-close{position:relative}
+
+/* Panneau admin */
+.admin-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.admin-row:last-child{border-bottom:0}
+.admin-id{flex:1}
+.admin-acts{display:flex;gap:5px;flex-wrap:wrap}
+
 
 @media(max-width:1000px){
   .grid3{grid-template-columns:1fr 1fr}
