@@ -1,4 +1,4 @@
-/* ═══════════ MOTEUR v6 — sans animaux/amis, systèmes améliorés ═══════════ */
+/* ═══════════ MOTEUR v8 — bugs corrigés, santé, banques joueurs, sans bourse/succès ═══════════ */
 let G = null, W = null, TICK_TIMER = null;
 const T = { cashDisp: 0, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview', offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0, jobF: { sec:'', q:'', ok:false }, qT: null, netSign: 0 };
 
@@ -12,6 +12,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const foodById = id => DATA.foods.find(f => f.id === id);
 const upLvl = (b,id) => (b.ups && b.ups[id]) || 0;
 const perk = (b,id) => !!(b.perks && b.perks[id]);
+const isPlayerBank = id => typeof id === 'string' && id.indexOf('player:') === 0;
 
 function balance() { return G.bank.bankId ? G.bank.compte : G.cash; }
 function pushJ(label, amt) {
@@ -35,9 +36,7 @@ function pay(amt, label) {
 function genWorld() {
   W = {
     npcs: [], biz: [], idx: { cac: 7842, immo: 100, conso: 100 }, t: 0,
-    weather: { i: irnd(0,3), until: Date.now() + 180000 },
-    stocks: DATA.stocks.map(s => ({ ...s, hist: [s.price] })),
-    cryptos: DATA.cryptos.map(c => ({ ...c, hist: [c.price] }))
+    weather: { i: irnd(0,3), until: Date.now() + 180000 }
   };
   for (let i = 0; i < 800; i++) {
     const r = Math.random();
@@ -49,19 +48,19 @@ function genWorld() {
 
 function newGame(name) {
   return {
-    v: 6, name, created: Date.now(), last: Date.now(),
+    v: 8, name, created: Date.now(), last: Date.now(),
     cash: 2000, xp: 0, lottoCd: 0,
     vitals: { sante: 92, faim: 70, soif: 65 },
+    health: { doctor: null, vaccines: [], sick: false, rdv: 0 },
     jobs: [], training: null, diplomas: [],
     inv: {}, cars: [], houses: [], rental: null, insurances: [],
-    bank: { bankId: null, compte: 0, livret: 0, loans: [] },
+    bank: { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: [] },
     biz: [], ill: { unlocked: false, heat: 0, cd: {} },
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
     missions: { list: [], refreshAt: 0 },
     quests: { list: [], refreshAt: 0 },
-    journal: [], ach: [], tuto: 0,
+    journal: [], tuto: 0,
     skills: {},
-    portfolio: { stocks: {}, cryptos: {} },
     pendingPack: null,
     stats: { earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0, jailed: false, orders: 0, lottoWins: 0 }
   };
@@ -70,24 +69,20 @@ function sanitize(s) {
   const d = newGame(s.name || 'Citoyen');
   const out = Object.assign(d, s);
   out.vitals = Object.assign(d.vitals, s.vitals || {});
+  out.health = Object.assign(d.health, s.health || {});
   out.bank = Object.assign(d.bank, s.bank || {});
   out.ill = Object.assign(d.ill, s.ill || {});
   out.stats = Object.assign(d.stats, s.stats || {});
   out.missions = Object.assign(d.missions, s.missions || {});
   out.quests = Object.assign(d.quests, s.quests || {});
   out.skills = Object.assign(d.skills, s.skills || {});
-  out.portfolio = Object.assign({ stocks: {}, cryptos: {} }, s.portfolio || {});
   if (typeof out.tuto !== 'number') out.tuto = -1;
   if (typeof out.xp !== 'number') out.xp = 0;
   if (typeof out.lottoCd !== 'number') out.lottoCd = 0;
   if (!Array.isArray(out.journal)) out.journal = [];
-  if (!Array.isArray(out.ach)) out.ach = [];
-  if (!Array.isArray(out.jobs)) {
-    out.jobs = out.job ? [{ c: out.job.c, o: out.job.o, title: out.job.title, h: out.job.h, mode: 'plein', mins: out.job.mins || 0, promo: !!out.job.promo, since: out.job.since || Date.now() }] : [];
-  }
-  delete out.job;
-  if (out.v < 3 && out.bank.bankId && out.cash > 0) { out.bank.compte += out.cash; out.cash = 0; }
-  out.v = 6;
+  if (!Array.isArray(out.jobs)) out.jobs = [];
+  delete out.job; delete out.ach; delete out.portfolio; delete out.pets; delete out.friends;
+  out.v = 8;
   out.biz.forEach(b => {
     if (!b.ups) b.ups = {};
     if (!b.perks) b.perks = {};
@@ -119,11 +114,11 @@ function skillBonus(type) {
   if (type === 'luck') return skillLvl('s_lotto') * 0.02;
   return 0;
 }
-
 function carBonus() { return G.cars.length ? Math.max(...G.cars.map(i => DATA.cars[i].b)) : 0; }
-function comfort() { return Math.min(10, G.houses.reduce((a,i) => a + DATA.homes[i].p/60000, 0)); }
+/* CORRECTIF BUG immobilier : houses contient des objets {i,...}, on lit h.i */
+function comfort() { return Math.min(10, G.houses.reduce((a,h) => a + (DATA.homes[h.i] ? DATA.homes[h.i].p/60000 : 0), 0)); }
 function hasShelter() { return !!G.rental || G.houses.length > 0; }
-function cov() { return G.insurances.reduce((m,id) => Math.max(m, DATA.insurers.find(x => x.id === id).cov), 0); }
+function cov() { return G.insurances.reduce((m,id) => Math.max(m, (DATA.insurers.find(x => x.id === id)||{}).cov || 0), 0); }
 function playerTier() { return G.diplomas.reduce((m,id) => Math.max(m, DATA.form.find(f => f.id === id).tier), 1); }
 function ownsBiz(t) { return G.biz.some(b => b.type === t); }
 function inJail() { return G.jail > Date.now(); }
@@ -140,6 +135,12 @@ function jobNetHourly(h, mode) {
   const gross = h * load * skillBonus('salary'), cot = gross*0.22, ni = gross - cot;
   return ni * (1 - tauxPAS(h*2080*load*0.78));
 }
+function bankRate() {
+  if (!G.bank.bankId) return 0;
+  if (isPlayerBank(G.bank.bankId)) return G.bank.playerRate || 2;
+  const b = DATA.banks.find(x => x.id === G.bank.bankId);
+  return b ? b.lv : 0;
+}
 
 function rollMissions() {
   const pool = DATA.missions.slice(); const list = [];
@@ -154,20 +155,6 @@ function rollQuests() {
 function mission(type, amt) {
   if (G.missions && G.missions.list) G.missions.list.forEach(m => { if (m.type === type && !m.claimed) m.prog = (type === 'cash') ? Math.max(m.prog, amt) : m.prog + (amt || 1); });
   if (G.quests && G.quests.list) G.quests.list.forEach(q => { if (q.type === type && !q.claimed) q.prog = (type === 'cash') ? Math.max(q.prog, amt) : q.prog + (amt || 1); });
-}
-function checkAch() {
-  const C = {
-    a_job: G.jobs.length > 0, a_dip: G.diplomas.length > 0, a_biz: G.biz.length > 0,
-    a_10k: balance() >= 10000, a_100k: balance() >= 100000, a_home: G.houses.length > 0,
-    a_sell100: G.stats.sales >= 100, a_bank: ownsBiz('banque'), a_lvl5: level(G.xp) >= 5,
-    a_jail: !!G.stats.jailed, a_miss5: (G.stats.missionsDone||0) >= 5, a_noir: !!G.ill.unlocked,
-    a_lotto: (G.stats.lottoWins||0) >= 1, a_order: (G.stats.orders||0) >= 5,
-    a_skill: Object.values(G.skills).some(v => v > 0),
-    a_stock: Object.values(G.portfolio.stocks).some(v => v > 0) || Object.values(G.portfolio.cryptos).some(v => v > 0)
-  };
-  DATA.ach.forEach(a => {
-    if (C[a.id] && !G.ach.includes(a.id)) { G.ach.push(a.id); addXp(a.xp); UI.toast('🏆 ' + a.n + ' (+' + a.xp + ' XP)', 'good'); UI.confetti(); }
-  });
 }
 
 function tick() {
@@ -190,14 +177,17 @@ function tick() {
   });
 
   const f = hasShelter() ? 1 : 1.5;
-  const hungerMul = Math.max(0.5, 1 + skillBonus('hunger') - 1);
-  const healthMul = 1 + skillBonus('health') - 1;
-  G.vitals.faim = Math.max(0, G.vitals.faim - 0.10*f*hungerMul);
+  const hungerMul = Math.max(0.5, skillBonus('hunger'));
+  const healthMul = Math.max(0.5, skillBonus('health'));
+  G.vitals.faim = Math.max(0, G.vitals.faim - 0.10*f*hungerMul - (G.vitals.faim > 100 ? 0.15 : 0));
   G.vitals.soif = Math.max(0, G.vitals.soif - 0.14*f);
   if (G.vitals.faim <= 0) G.vitals.sante -= 0.45;
   if (G.vitals.soif <= 0) G.vitals.sante -= 0.60;
-  if (G.vitals.faim > 55 && G.vitals.soif > 55 && G.vitals.sante < 100)
-    G.vitals.sante = Math.min(100, G.vitals.sante + (0.22 + comfort()*0.03) * Math.max(0.5, healthMul));
+  if (G.vitals.faim > 100) G.vitals.sante -= (G.vitals.faim - 100) * 0.002;
+  if (G.health.sick) G.vitals.sante -= 0.25;
+  if (G.vitals.faim > 40 && G.vitals.faim <= 100 && G.vitals.soif > 55 && !G.health.sick && G.vitals.sante < 100)
+    G.vitals.sante = Math.min(100, G.vitals.sante + (0.22 + comfort()*0.03) * healthMul);
+  G.vitals.sante = clamp(G.vitals.sante, 0, 100);
   if (G.vitals.sante <= 0) hospital();
 
   if (G.training && now >= G.training.end) {
@@ -213,18 +203,6 @@ function tick() {
     UI.feed('<b>Météo :</b> ' + DATA.weather[W.weather.i].ico + ' ' + DATA.weather[W.weather.i].n);
   }
 
-  if (W.t % 3 === 0) {
-    W.stocks.forEach(s => { s.price *= 1 + rnd(-s.volatility, s.volatility) + s.trend; s.hist.push(s.price); if (s.hist.length > 60) s.hist.shift(); });
-    W.cryptos.forEach(c => { c.price *= 1 + rnd(-c.volatility, c.volatility) + c.trend; c.hist.push(c.price); if (c.hist.length > 60) c.hist.shift(); });
-  }
-
-  if (W.t % 60 === 0) {
-    let div = 0;
-    Object.entries(G.portfolio.stocks).forEach(([id, qty]) => { const s = W.stocks.find(x => x.id === id); if (s) div += qty * s.price * 0.002; });
-    Object.entries(G.portfolio.cryptos).forEach(([id, qty]) => { const c = W.cryptos.find(x => x.id === id); if (c) div += qty * c.price * 0.001; });
-    if (div > 0) { receive(div, 'Dividendes'); UI.toast('Dividendes +' + eur(div), 'good'); }
-  }
-
   G.biz.forEach((b,bi) => tickBiz(b, bi, info, now));
 
   if (W.t % 60 === 0) monthly(info);
@@ -234,7 +212,7 @@ function tick() {
   if (W.t % 4 === 0) W.biz.forEach(b => { b.sante = clamp(b.sante + rnd(-1.4,1.5), 20, 100); });
 
   if (now >= G.nextEvent) { G.nextEvent = now + rnd(100,280)*1000; fireEvent(); }
-  if (G.boost && now > G.boost.until) { G.boost = null; }
+  if (G.boost && now > G.boost.until) G.boost = null;
   if (G.ill.heat > 0) G.ill.heat = Math.max(0, G.ill.heat - 0.06);
 
   if (W.t % 60 === 0) {
@@ -248,7 +226,6 @@ function tick() {
   if (!G.missions.list || !G.missions.list.length) rollMissions();
   if (G.quests.refreshAt && now > G.quests.refreshAt) { rollQuests(); UI.toast('Nouvelles quêtes quotidiennes !', 'good'); }
   if (!G.quests.list || !G.quests.list.length) rollQuests();
-  if (W.t % 5 === 0) checkAch();
 
   G.tickInfo = info;
   T.hist.push(info.rev - info.chg); if (T.hist.length > 90) T.hist.shift();
@@ -362,8 +339,8 @@ function monthly(info) {
     if (L.reste <= 0) { UI.toast(L.n + ' remboursé ✓', 'good'); return false; }
     return true;
   });
-  const bd = DATA.banks.find(x => x.id === G.bank.bankId);
-  if (bd && G.bank.livret > 0) { const i = G.bank.livret * bd.lv/100/12; G.bank.livret += i; pushJ('Livret A', i); }
+  const rate = bankRate();
+  if (G.bank.livret > 0 && rate > 0) { const i = G.bank.livret * rate/100/12; G.bank.livret += i; pushJ('Intérêts Livret A', i); }
   G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); pay(a.m, 'Assurance — ' + a.n); info.chg += a.m; });
   const emp = G.biz.reduce((a,b) => a + b.emps.length, 0);
   if (emp > 0) { const u = emp*45; pay(u, 'URSSAF'); info.chg += u; info.tax += u; }
@@ -376,11 +353,12 @@ function fireEvent() {
   UI.toast(e.m + ' (' + delta + ')', e.t === 'good' ? 'good' : 'warn');
   UI.feed('<b>Événement :</b> ' + e.m + ' <span class="money">' + delta + '</span>');
   if (e.t === 'good') UI.confetti();
+  if (G.health.sick && T.tab === 'sante') UI.render();
 }
 
 function hospital() {
   let c = 800; c *= (1 - cov());
-  pay(c, 'Hospitalisation'); G.vitals = { sante: 35, faim: 40, soif: 40 };
+  pay(c, 'Hospitalisation'); G.vitals = { sante: 35, faim: 70, soif: 65 };
   UI.toast('Hospitalisation −' + eur(c), 'bad');
 }
 
@@ -398,14 +376,18 @@ const A = {
   },
   eat(d, el) {
     const f = foodById(d.id); if (!f) return;
-    if ((G.inv[d.id]||0) <= 0) return UI.toast('Vous n\'en avez plus.', 'warn');
+    if ((G.inv[d.id]||0) <= 0) return UI.toast('Vous n’en avez plus.', 'warn');
     if (el && el.closest) { const card = el.closest('.inv-card'); if (card) card.classList.add('chomp'); }
     G.inv[d.id]--;
-    G.vitals.faim = clamp(G.vitals.faim + f.f, 0, 100);
+    G.vitals.faim = clamp(G.vitals.faim + f.f, 0, 200);
     G.vitals.soif = clamp(G.vitals.soif + f.s, 0, 100);
     mission('eat', 1); addXp(2);
     if (f.f > 0) { UI.floatText('+' + f.f + ' Faim', 'var(--orange)'); UI.pulseVital('rowFaim'); }
     if (f.s > 0) { UI.floatText('+' + f.s + ' Soif', 'var(--blue)'); UI.pulseVital('rowSoif'); }
+    if (G.vitals.faim > 140 && Math.random() < 0.35) {
+      G.health.sick = true;
+      UI.toast('Trouble alimentaire : trop mangé ! Consultez un médecin.', 'bad');
+    }
     UI.toast(f.n + ' consommé', 'good');
     setTimeout(() => UI.render(), 380);
   },
@@ -467,7 +449,9 @@ const A = {
     if (d.type === 'immobilier') b.mandats = 0;
     if (d.type === 'banque') Object.assign(b, { accounts: 0, deposits: 0, loans: 10000, tauxCredit: 6, tauxLivret: 2, mkt: 1 });
     G.biz.push(b); addXp(80);
-    UI.closeModal(); UI.toast(bt.label + ' « ' + name + ' » créée', 'good');
+    UI.closeModal();
+    UI.confetti();
+    UI.toast('🎉 ' + bt.label + ' « ' + name + ' » fondée !', 'good');
     T.selBiz = G.biz.length - 1; T.bizTab = 'overview'; UI.render();
   },
   selBiz(d) { T.selBiz = +d.i; T.bizTab = 'overview'; UI.render(); },
@@ -489,6 +473,7 @@ const A = {
   priceAdj(d) { const b = G.biz[+d.b]; b.prices[d.p] = Math.max(0.1, +((b.prices[d.p]||1) + +d.v).toFixed(2)); UI.render(); },
   buyStock(d) {
     const b = G.biz[+d.b], p = DATA.bizTypes.magasin.prods.find(x => x.id === d.p);
+    if (!b || !p) return;
     const q = +d.q, cost = p.cost*q;
     if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(cost, 'Grossiste — ' + p.n); G.stats.spent += cost;
@@ -528,8 +513,7 @@ const A = {
     G.stats.orders = (G.stats.orders||0) + 1;
     addXp(20);
     UI.toast('📦 Commande honorée +' + eur(o.reward), 'good');
-    UI.confetti();
-    UI.render();
+    UI.confetti(); UI.render();
   },
   hire(d) {
     const b = G.biz[+d.b], max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
@@ -584,11 +568,24 @@ const A = {
 
   openBank(d) {
     G.bank.bankId = d.id;
+    G.bank.bankName = d.name || null;
+    G.bank.playerRate = d.rate ? parseFloat(d.rate) : null;
     if (G.cash > 0) { G.bank.compte += G.cash; pushJ('Versement initial', G.cash); G.cash = 0; }
     UI.cardFx('Ouverture de compte', eur(0));
-    UI.toast('Compte ouvert chez ' + DATA.banks.find(b => b.id === d.id).n, 'good');
+    UI.toast('Compte ouvert : ' + (G.bank.bankName || 'banque'), 'good');
     UI.render();
   },
+  leaveBank() {
+    if (!G.bank.bankId) return UI.toast('Aucun compte à clôturer.', 'warn');
+    const total = G.bank.compte + G.bank.livret;
+    G.cash += total;
+    pushJ('Clôture de compte', total);
+    G.bank = { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: G.bank.loans };
+    UI.cardFx('Compte clôturé', '+' + eur(total));
+    UI.toast('Compte clôturé, fonds récupérés.', 'warn');
+    UI.render();
+  },
+  bankDetails(d) { UI.bankDetails(d); },
   deposit() {
     const v = +((document.getElementById('bankAmt')||{}).value || 0);
     if (v <= 0 || G.cash < v) return UI.toast('Liquidités insuffisantes.', 'bad');
@@ -640,6 +637,37 @@ const A = {
     UI.render();
   },
 
+  chooseDoctor(d) {
+    const doc = DATA.doctors.find(x => x.id === d.id);
+    if (!doc) return;
+    G.health.doctor = d.id;
+    UI.toast('Médecin traitant : ' + doc.n, 'good'); UI.render();
+  },
+  buyVaccine(d) {
+    const v = DATA.vaccines.find(x => x.id === d.id);
+    if (!v) return;
+    if (G.health.vaccines.includes(d.id)) return UI.toast('Déjà vacciné.', 'warn');
+    if (balance() < v.cost) return UI.toast('Fonds insuffisants.', 'bad');
+    pay(v.cost, 'Vaccin — ' + v.n);
+    G.health.vaccines.push(d.id);
+    UI.toast('💉 ' + v.n + ' administré', 'good'); UI.render();
+  },
+  bookAppointment() {
+    if (!G.health.doctor) return UI.toast('Choisissez d’abord un médecin traitant.', 'warn');
+    if (!G.health.sick) return UI.toast('Vous n’êtes pas malade.', 'warn');
+    const doc = DATA.doctors.find(x => x.id === G.health.doctor);
+    const cost = doc.fee * (1 - cov());
+    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
+    pay(cost, 'Consultation — ' + doc.n);
+    G.health.sick = false;
+    G.health.rdv = (G.health.rdv||0) + 1;
+    G.vitals.sante = clamp(G.vitals.sante + 30 * doc.quality, 0, 100);
+    UI.pulseVital('rowSante');
+    UI.confetti();
+    UI.toast('🩺 ' + doc.n + ' vous a soigné (−' + eur(cost) + ' après remboursement)', 'good');
+    UI.render();
+  },
+
   lotto() {
     const L = DATA.lotto;
     if (Date.now() < (G.lottoCd || 0)) return UI.toast('Patientez.', 'warn');
@@ -655,15 +683,13 @@ const A = {
       addXp(30);
       UI.toast('🍀 GAGNÉ +' + eur(g), 'good');
       UI.confetti();
-    } else {
-      UI.toast('Pas de chance cette fois.', '');
-    }
+    } else UI.toast('Pas de chance cette fois.', '');
     UI.render();
   },
 
   illUnlock() {
     if (balance() < DATA.illEntry) return UI.toast(DATA.illEntry + ' € requis.', 'bad');
-    pay(DATA.illEntry, 'Droit d\'entrée'); G.ill.unlocked = true;
+    pay(DATA.illEntry, 'Droit d’entrée'); G.ill.unlocked = true;
     UI.toast('Réseau débloqué', 'warn'); UI.render();
   },
   illDo(d) {
@@ -722,59 +748,12 @@ const A = {
     UI.toast(s.n + ' niveau ' + (lvl+1), 'good'); UI.render();
   },
 
-  buyStock(d) {
-    const s = W.stocks.find(x => x.id === d.id);
-    if (!s) return;
-    const qty = +((document.getElementById('stockQty')||{}).value || 1);
-    if (qty <= 0) return UI.toast('Quantité invalide.', 'bad');
-    const cost = s.price * qty;
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Achat ' + s.n);
-    G.portfolio.stocks[s.id] = (G.portfolio.stocks[s.id]||0) + qty;
-    UI.toast(qty + ' × ' + s.n + ' achetés', 'good'); UI.render();
-  },
-  sellStock(d) {
-    const s = W.stocks.find(x => x.id === d.id);
-    if (!s) return;
-    const held = G.portfolio.stocks[s.id] || 0;
-    if (held <= 0) return UI.toast('Vous n\'en possédez pas.', 'bad');
-    const qty = Math.min(held, +((document.getElementById('stockQty')||{}).value || held));
-    if (qty <= 0) return;
-    const rev = s.price * qty;
-    G.portfolio.stocks[s.id] = held - qty;
-    receive(rev, 'Vente ' + s.n);
-    UI.toast(qty + ' × ' + s.n + ' vendus +' + eur(rev), 'good'); UI.render();
-  },
-  buyCrypto(d) {
-    const c = W.cryptos.find(x => x.id === d.id);
-    if (!c) return;
-    const qty = +((document.getElementById('cryptoQty')||{}).value || 0.01);
-    if (qty <= 0) return UI.toast('Quantité invalide.', 'bad');
-    const cost = c.price * qty;
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Achat ' + c.n);
-    G.portfolio.cryptos[c.id] = (G.portfolio.cryptos[c.id]||0) + qty;
-    UI.toast(qty.toFixed(3) + ' × ' + c.n + ' achetés', 'good'); UI.render();
-  },
-  sellCrypto(d) {
-    const c = W.cryptos.find(x => x.id === d.id);
-    if (!c) return;
-    const held = G.portfolio.cryptos[c.id] || 0;
-    if (held <= 0) return UI.toast('Vous n\'en possédez pas.', 'bad');
-    const qty = Math.min(held, +((document.getElementById('cryptoQty')||{}).value || held));
-    if (qty <= 0) return;
-    const rev = c.price * qty;
-    G.portfolio.cryptos[c.id] = held - qty;
-    receive(rev, 'Vente ' + c.n);
-    UI.toast(qty.toFixed(3) + ' × ' + c.n + ' vendus +' + eur(rev), 'good'); UI.render();
-  },
-
   buyPack(d) {
     const p = DATA.packs.find(x => x.id === d.id);
     if (!p) return;
     G.pendingPack = p.id;
     window.open(p.stripe, '_blank', 'noopener');
-    UI.toast('Paiement ouvert. Une fois réglé, cliquez « J\'ai payé ».', 'good');
+    UI.toast('Paiement ouvert. Cliquez « J’ai payé » une fois réglé.', 'good');
     UI.render();
   },
   confirmPack() {
@@ -785,13 +764,14 @@ const A = {
     G.stats.premium += p.amount;
     UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount));
     UI.toast('+' + eur0(p.amount) + ' crédités', 'good');
-    UI.confetti();
-    UI.render();
+    UI.confetti(); UI.render();
   },
-  cancelPack() {
-    G.pendingPack = null;
-    UI.toast('Achat annulé.', '');
-    UI.render();
+  cancelPack() { G.pendingPack = null; UI.toast('Achat annulé.', ''); UI.render(); },
+
+  deleteAccount() {
+    if (!confirm('SUPPRIMER DÉFINITIVEMENT votre compte et toutes vos données ?')) return;
+    if (!confirm('Cette action est irréversible. Confirmer ?')) return;
+    DB.deleteAccount(DB.session()).then(() => location.reload());
   },
 
   tutoNext() { UI.tutoNext(); },
@@ -815,7 +795,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat','buyFood','train','offer','sign','openCreate','createBiz','buyMat','craft','buyStock','priceAdj','hire','hireConfirm','buyHome','rentHome','buyCar','deposit','withdraw','toLivret','fromLivret','loanTake','illDo','bribe','upgrade','mktDo','orderFill','lotto','buySkill','buyStock','sellStock','buyCrypto','sellCrypto','claimMission','claimQuest'];
+const GUARDED = ['eat','buyFood','train','offer','sign','openCreate','createBiz','buyMat','craft','buyStock','priceAdj','hire','hireConfirm','buyHome','rentHome','buyCar','deposit','withdraw','toLivret','fromLivret','loanTake','loanRepay','illDo','bribe','upgrade','mktDo','orderFill','lotto','buySkill','claimMission','claimQuest','buyVaccine','bookAppointment','openBank','leaveBank'];
 
 function save() {
   if (!G) return;
