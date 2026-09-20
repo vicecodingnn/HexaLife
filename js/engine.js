@@ -1,6 +1,6 @@
-/* ═══════════ MOTEUR v9 — render silencieux (refresh), bugs corrigés ═══════════ */
+/* ═══════════ MOTEUR v10 — transferts, annonces, admin, animations ═══════════ */
 let G = null, W = null, TICK_TIMER = null;
-const T = { cashDisp: 0, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview', offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0, jobF: { sec:'', q:'', ok:false }, qT: null, netSign: 0 };
+const T = { cashDisp: 0, cashInit: false, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview', offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0, jobF: { sec:'', q:'', ok:false }, qT: null, netSign: 0, isAdmin: false };
 
 const eur = n => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits:2 }).format(n || 0);
 const eur0 = n => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits:0 }).format(n || 0);
@@ -13,7 +13,6 @@ const foodById = id => DATA.foods.find(f => f.id === id);
 const upLvl = (b,id) => (b.ups && b.ups[id]) || 0;
 const perk = (b,id) => !!(b.perks && b.perks[id]);
 const isPlayerBank = id => typeof id === 'string' && id.indexOf('player:') === 0;
-/* render silencieux : pas de clignotement, scroll + champs préservés */
 function refresh() { UI.render(true); }
 
 function balance() { return G.bank.bankId ? G.bank.compte : G.cash; }
@@ -35,11 +34,27 @@ function pay(amt, label) {
   UI.moneyFx(-amt);
 }
 
+function adminFactor() {
+  if (!G.adminMod) return 1;
+  if (Date.now() > G.adminMod.until) { G.adminMod = null; return 1; }
+  return G.adminMod.type === 'boost' ? 1.5 : 0.5;
+}
+
+/* Applique une opération reçue via mailbox (transfert / admin) */
+function applyOp(op) {
+  if (!op) return;
+  if (op.type === 'credit') { receive(op.amount, 'Transfert reçu de ' + op.from); UI.moneyRain(); UI.toast('💸 ' + op.from + ' vous a envoyé ' + eur(op.amount), 'good'); }
+  else if (op.type === 'debit') { pay(op.amount, 'Transfert envoyé à ' + op.to); UI.toast('Transfert de ' + eur(op.amount) + ' à ' + op.to + ' confirmé', ''); }
+  else if (op.type === 'adminCredit') { receive(op.amount, 'Bonus administrateur'); UI.confetti(); UI.toast('🎁 Bonus admin +' + eur(op.amount), 'good'); }
+  else if (op.type === 'adminDebit') { pay(op.amount, 'Malus administrateur'); UI.toast('⚠ Malus admin −' + eur(op.amount), 'bad'); }
+  else if (op.type === 'deleteBiz') { G.biz = []; T.selBiz = -1; UI.toast('🏚 Vos entreprises ont été supprimées par un admin', 'bad'); }
+  else if (op.type === 'boost') { G.adminMod = { type: 'boost', until: Date.now() + 5*60*1000 }; UI.confetti(); UI.toast('⚡ Boost admin : revenus ×1,5 pendant 5 min', 'good'); }
+  else if (op.type === 'malus') { G.adminMod = { type: 'malus', until: Date.now() + 5*60*1000 }; UI.toast('🐌 Malus admin : revenus ×0,5 pendant 5 min', 'bad'); }
+  else if (op.type === 'reset') { const name = G.name; G = sanitize(newGame(name)); UI.toast('♻ Progression réinitialisée par un admin', 'bad'); }
+}
+
 function genWorld() {
-  W = {
-    npcs: [], biz: [], idx: { cac: 7842, immo: 100, conso: 100 }, t: 0,
-    weather: { i: irnd(0,3), until: Date.now() + 180000 }
-  };
+  W = { npcs: [], biz: [], idx: { cac: 7842, immo: 100, conso: 100 }, t: 0, weather: { i: irnd(0,3), until: Date.now() + 180000 } };
   for (let i = 0; i < 800; i++) {
     const r = Math.random();
     W.npcs.push({ n: DATA.prenoms[irnd(0,39)] + ' ' + DATA.noms[irnd(0,39)], role: r < .78 ? 'client' : (r < .94 ? 'employé' : 'patron'), w: Math.round(rnd(600,60000)) });
@@ -50,8 +65,8 @@ function genWorld() {
 
 function newGame(name) {
   return {
-    v: 9, name, created: Date.now(), last: Date.now(),
-    cash: 2000, xp: 0, lottoCd: 0,
+    v: 10, name, created: Date.now(), last: Date.now(),
+    cash: 2000, xp: 0, lottoCd: 0, adminMod: null,
     vitals: { sante: 92, faim: 70, soif: 65 },
     health: { doctor: null, vaccines: [], sick: false, rdv: 0 },
     jobs: [], training: null, diplomas: [],
@@ -59,11 +74,8 @@ function newGame(name) {
     bank: { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: [] },
     biz: [], ill: { unlocked: false, heat: 0, cd: {} },
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
-    missions: { list: [], refreshAt: 0 },
-    quests: { list: [], refreshAt: 0 },
-    journal: [], tuto: 0,
-    skills: {},
-    pendingPack: null,
+    missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
+    journal: [], tuto: 0, skills: {}, pendingPack: null,
     stats: { earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0, jailed: false, orders: 0, lottoWins: 0 }
   };
 }
@@ -81,15 +93,13 @@ function sanitize(s) {
   if (typeof out.tuto !== 'number') out.tuto = -1;
   if (typeof out.xp !== 'number') out.xp = 0;
   if (typeof out.lottoCd !== 'number') out.lottoCd = 0;
+  out.adminMod = out.adminMod || null;
   if (!Array.isArray(out.journal)) out.journal = [];
   if (!Array.isArray(out.jobs)) out.jobs = [];
   delete out.job; delete out.ach; delete out.portfolio; delete out.pets; delete out.friends;
-  out.v = 9;
+  out.v = 10;
   out.biz.forEach(b => {
-    if (!b.ups) b.ups = {};
-    if (!b.perks) b.perks = {};
-    if (!b.hist) b.hist = [];
-    if (!b.counters) b.counters = {};
+    if (!b.ups) b.ups = {}; if (!b.perks) b.perks = {}; if (!b.hist) b.hist = []; if (!b.counters) b.counters = {};
     if (typeof b.wagesTotal !== 'number') b.wagesTotal = 0;
     if (typeof b.boostUntil !== 'number') b.boostUntil = 0;
     if (typeof b.boostMul !== 'number') b.boostMul = 1;
@@ -105,7 +115,6 @@ function tauxPAS(annuel) {
   for (const [lim,r] of TR) { if (annuel > lim) { tax += (lim-prev)*r; prev = lim; } else { tax += (annuel-prev)*r; break; } }
   return annuel > 0 ? tax/annuel : 0;
 }
-
 function skillLvl(id) { return (G.skills && G.skills[id]) || 0; }
 function skillBonus(type) {
   if (type === 'salary') return 1 + skillLvl('s_eff') * 0.10;
@@ -162,15 +171,16 @@ function tick() {
   if (!G || !W) return;
   const now = Date.now(); W.t++;
   const info = { rev: 0, chg: 0, tax: 0 };
+  const af = adminFactor();
 
   G.jobs.forEach(j => {
     const load = jobLoad(j);
     const gross = (j.h/60) * load * (1 + carBonus()) * skillBonus('salary');
     const cot = gross*0.22, ni = gross - cot;
     const pas = ni * tauxPAS(j.h*2080*load*0.78);
-    receive(ni, 'Salaire — ' + j.title);
+    receive(ni * af, 'Salaire — ' + j.title);
     pay(pas, 'PAS');
-    info.rev += ni; info.chg += pas; info.tax += cot + pas;
+    info.rev += ni * af; info.chg += pas; info.tax += cot + pas;
     G.stats.earned += ni - pas; G.stats.tax += cot + pas;
     mission('work', 1);
     j.mins = (j.mins || 0) + 1;
@@ -204,7 +214,7 @@ function tick() {
     UI.feed('<b>Météo :</b> ' + DATA.weather[W.weather.i].ico + ' ' + DATA.weather[W.weather.i].n);
   }
 
-  G.biz.forEach((b,bi) => tickBiz(b, bi, info, now));
+  G.biz.forEach((b,bi) => tickBiz(b, bi, info, now, af));
 
   if (W.t % 60 === 0) monthly(info);
   if (W.t % 6 === 0) G.houses.forEach(h => { h.v *= 1 + rnd(-0.0006,0.0009); if (h.tenant) { receive(h.rent, 'Loyer'); info.rev += h.rent; } });
@@ -237,7 +247,7 @@ function tick() {
 function boostMul(type) { return (G.boost && (G.boost.type === type || G.boost.type === 'toutes')) ? G.boost.mul : 1; }
 function weatherMul(type) { return (DATA.weather[W.weather.i].mul || {})[type] || 1; }
 
-function tickBiz(b, bi, info, now) {
+function tickBiz(b, bi, info, now, af) {
   let revTick = 0;
   const localMul = (b.boostUntil > now ? b.boostMul : 1) * (perk(b,'fidelite') ? 1.08 : 1);
   const promoOn = b.promoUntil > now;
@@ -246,10 +256,7 @@ function tickBiz(b, bi, info, now) {
     const bt = DATA.bizTypes[b.type];
     if (b.type === 'magasin' && perk(b,'autoRestock')) {
       bt.prods.forEach(p => {
-        if ((b.stock[p.id]||0) < 10 && balance() >= p.cost*20) {
-          pay(p.cost*20, 'Réassort — ' + p.n);
-          b.stock[p.id] = (b.stock[p.id]||0) + 20;
-        }
+        if ((b.stock[p.id]||0) < 10 && balance() >= p.cost*20) { pay(p.cost*20, 'Réassort — ' + p.n); b.stock[p.id] = (b.stock[p.id]||0) + 20; }
       });
     }
     if (b.type === 'boulangerie') {
@@ -281,6 +288,7 @@ function tickBiz(b, bi, info, now) {
         maybeSaleFeed(p.n, unit, b.name);
       } else b.rep = Math.max(5, b.rep - 0.05);
     }
+    rev *= af;
     const repGain = (1 + 0.4*upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b,'enseigne') ? 1.5 : 1) * skillBonus('rep');
     b.rep = clamp(b.rep + (sold ? 0.02*sold*repGain : -0.03), 5, 100);
     if (rev > 0) { receive(rev, 'Ventes — ' + b.name); info.rev += rev; b.rev += rev; b.profit = (b.profit||0)+rev; revTick = rev; }
@@ -290,7 +298,8 @@ function tickBiz(b, bi, info, now) {
   }
   else if (b.type === 'immobilier') {
     if (upLvl(b,'vitrine') && W.t % 60 === 0) b.mandats = (b.mandats||0) + upLvl(b,'vitrine');
-    const rev = (b.mandats||0) * rnd(0.8,2.2) * (1 + 0.25*upLvl(b,'reseau')) * (1 + 0.05*b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
+    let rev = (b.mandats||0) * rnd(0.8,2.2) * (1 + 0.25*upLvl(b,'reseau')) * (1 + 0.05*b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
+    rev *= af;
     if (rev > 0) { receive(rev, 'Commissions — ' + b.name); info.rev += rev; b.rev += rev; b.profit = (b.profit||0)+rev; revTick = rev; }
     const wages = b.emps.reduce((a,e) => a + e.h/60, 0);
     if (wages > 0) { pay(wages, 'Salaires — ' + b.name); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
@@ -304,7 +313,7 @@ function tickBiz(b, bi, info, now) {
     const dem = b.tauxCredit < 5 ? 1400 : (b.tauxCredit < 8 ? 750 : 220);
     b.loans += dem * Math.random();
     if (Math.random() < 0.008 * (1 - 0.25*upLvl(b,'secu'))) { const def = b.loans * rnd(0.005,0.015); b.loans = Math.max(0, b.loans - def); }
-    const net = fees + loanInc - depCost;
+    let net = (fees + loanInc - depCost) * af;
     if (net >= 0) { receive(net, 'PNB — ' + b.name); info.rev += net; revTick = net; }
     else { pay(-net, 'Charge — ' + b.name); info.chg += -net; }
     b.rev += Math.max(0,net); b.profit = (b.profit||0)+net;
@@ -327,7 +336,7 @@ function pickProd(b) {
   return prods[0];
 }
 function maybeSaleFeed(prod, prix, bizName) {
-    const now = Date.now(); if (now - T.lastSaleFeed < 4000) return;
+  const now = Date.now(); if (now - T.lastSaleFeed < 4000) return;
   T.lastSaleFeed = now;
   UI.feed('<b>' + W.npcs[irnd(0,799)].n + '</b> achète « ' + prod + ' » à ' + esc(bizName) + ' <span class="money">+' + eur(prix) + '</span>');
 }
@@ -367,6 +376,13 @@ const A = {
   tab(d) { UI.setTab(d.id); },
   authTab(d) { UI.authTab(d.t); },
 
+  openSendMoney() { UI.openSendMoney(); },
+  doSendMoney() { UI.doSendMoney(); },
+  openAnnounce() { UI.openAnnounce(); },
+  doAnnounce() { UI.doAnnounce(); },
+  openAdmin() { UI.openAdmin(); },
+  adminDo(d) { UI.adminDo(d); },
+
   buyFood(d) {
     const f = foodById(d.id); if (!f) return;
     if (balance() < f.p) return UI.toast('Solde insuffisant.', 'bad');
@@ -385,10 +401,7 @@ const A = {
     mission('eat', 1); addXp(2);
     if (f.f > 0) { UI.floatText('+' + f.f + ' Faim', 'var(--orange)'); UI.pulseVital('rowFaim'); }
     if (f.s > 0) { UI.floatText('+' + f.s + ' Soif', 'var(--blue)'); UI.pulseVital('rowSoif'); }
-    if (G.vitals.faim > 140 && Math.random() < 0.35) {
-      G.health.sick = true;
-      UI.toast('Trouble alimentaire : trop mangé ! Consultez un médecin.', 'bad');
-    }
+    if (G.vitals.faim > 140 && Math.random() < 0.35) { G.health.sick = true; UI.toast('Trouble alimentaire : trop mangé ! Consultez un médecin.', 'bad'); }
     UI.toast(f.n + ' consommé', 'good');
     setTimeout(() => refresh(), 380);
   },
@@ -411,10 +424,7 @@ const A = {
     T.offerMode = canTake('plein') ? 'plein' : 'partiel';
     offerModal();
   },
-  pickMode(d) {
-    if (!canTake(d.m)) return UI.toast('Charge insuffisante.', 'warn');
-    T.offerMode = d.m; offerModal();
-  },
+  pickMode(d) { if (!canTake(d.m)) return UI.toast('Charge insuffisante.', 'warn'); T.offerMode = d.m; offerModal(); },
   sign() {
     if (!T.offer) return;
     const mode = T.offerMode;
@@ -425,11 +435,7 @@ const A = {
     UI.toast('Contrat signé : ' + job[0], 'good');
     UI.updateTop(); refresh();
   },
-  quitJob(d) {
-    const i = +d.i; const j = G.jobs[i]; if (!j) return;
-    G.jobs.splice(i, 1);
-    UI.toast('Quitté : ' + j.title, 'warn'); UI.updateTop(); refresh();
-  },
+  quitJob(d) { const i = +d.i; const j = G.jobs[i]; if (!j) return; G.jobs.splice(i,1); UI.toast('Quitté : ' + j.title, 'warn'); UI.updateTop(); refresh(); },
 
   openCreate(d) {
     const bt = DATA.bizTypes[d.type];
@@ -450,8 +456,7 @@ const A = {
     if (d.type === 'immobilier') b.mandats = 0;
     if (d.type === 'banque') Object.assign(b, { accounts: 0, deposits: 0, loans: 10000, tauxCredit: 6, tauxLivret: 2, mkt: 1 });
     G.biz.push(b); addXp(80);
-    UI.closeModal();
-    UI.confetti();
+    UI.closeModal(); UI.confetti();
     UI.toast('🎉 ' + bt.label + ' « ' + name + ' » fondée !', 'good');
     T.selBiz = G.biz.length - 1; T.bizTab = 'overview'; refresh();
   },
@@ -509,12 +514,9 @@ const A = {
     if ((b.stock[o.p]||0) < o.qty) return UI.toast('Stock insuffisant.', 'bad');
     b.stock[o.p] -= o.qty;
     receive(o.reward, 'Commande — ' + o.pn);
-    b.rep = clamp(b.rep + 2, 5, 100);
-    b.order = null;
-    G.stats.orders = (G.stats.orders||0) + 1;
-    addXp(20);
-    UI.toast('📦 Commande honorée +' + eur(o.reward), 'good');
-    UI.confetti(); refresh();
+    b.rep = clamp(b.rep + 2, 5, 100); b.order = null;
+    G.stats.orders = (G.stats.orders||0) + 1; addXp(20);
+    UI.toast('📦 Commande honorée +' + eur(o.reward), 'good'); UI.confetti(); refresh();
   },
   hire(d) {
     const b = G.biz[+d.b], max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
@@ -568,6 +570,7 @@ const A = {
   sellCar(d) { const i = +d.i, c = DATA.cars[i]; G.cars = G.cars.filter(x => x !== i); receive(c.p*0.6, 'Vente — ' + c.n); UI.toast(c.n + ' revendue', 'good'); refresh(); },
 
   openBank(d) {
+    if (G.bank.bankId === d.id) return UI.toast('Vous êtes déjà client de cette banque.', 'warn');
     G.bank.bankId = d.id;
     G.bank.bankName = d.name || null;
     G.bank.playerRate = d.rate ? parseFloat(d.rate) : null;
@@ -579,8 +582,7 @@ const A = {
   leaveBank() {
     if (!G.bank.bankId) return UI.toast('Aucun compte à clôturer.', 'warn');
     const total = G.bank.compte + G.bank.livret;
-    G.cash += total;
-    pushJ('Clôture de compte', total);
+    G.cash += total; pushJ('Clôture de compte', total);
     G.bank = { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: G.bank.loans };
     UI.cardFx('Compte clôturé', '+' + eur(total));
     UI.toast('Compte clôturé, fonds récupérés.', 'warn');
@@ -638,19 +640,12 @@ const A = {
     refresh();
   },
 
-  chooseDoctor(d) {
-    const doc = DATA.doctors.find(x => x.id === d.id);
-    if (!doc) return;
-    G.health.doctor = d.id;
-    UI.toast('Médecin traitant : ' + doc.n, 'good'); refresh();
-  },
+  chooseDoctor(d) { const doc = DATA.doctors.find(x => x.id === d.id); if (!doc) return; G.health.doctor = d.id; UI.toast('Médecin traitant : ' + doc.n, 'good'); refresh(); },
   buyVaccine(d) {
-    const v = DATA.vaccines.find(x => x.id === d.id);
-    if (!v) return;
+    const v = DATA.vaccines.find(x => x.id === d.id); if (!v) return;
     if (G.health.vaccines.includes(d.id)) return UI.toast('Déjà vacciné.', 'warn');
     if (balance() < v.cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(v.cost, 'Vaccin — ' + v.n);
-    G.health.vaccines.push(d.id);
+    pay(v.cost, 'Vaccin — ' + v.n); G.health.vaccines.push(d.id);
     UI.toast('💉 ' + v.n + ' administré', 'good'); refresh();
   },
   bookAppointment() {
@@ -660,11 +655,9 @@ const A = {
     const cost = doc.fee * (1 - cov());
     if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(cost, 'Consultation — ' + doc.n);
-    G.health.sick = false;
-    G.health.rdv = (G.health.rdv||0) + 1;
+    G.health.sick = false; G.health.rdv = (G.health.rdv||0) + 1;
     G.vitals.sante = clamp(G.vitals.sante + 30 * doc.quality, 0, 100);
-    UI.pulseVital('rowSante');
-    UI.confetti();
+    UI.pulseVital('rowSante'); UI.confetti();
     UI.toast('🩺 ' + doc.n + ' vous a soigné (−' + eur(cost) + ' après remboursement)', 'good');
     refresh();
   },
@@ -673,99 +666,59 @@ const A = {
     const L = DATA.lotto;
     if (Date.now() < (G.lottoCd || 0)) return UI.toast('Patientez.', 'warn');
     if (balance() < L.cost) return UI.toast(L.cost + ' € requis.', 'bad');
-    pay(L.cost, 'Ticket loto');
-    G.lottoCd = Date.now() + L.cd*1000;
-    mission('lotto', 1);
+    pay(L.cost, 'Ticket loto'); G.lottoCd = Date.now() + L.cd*1000; mission('lotto', 1);
     const chance = Math.min(0.5, L.chance + skillBonus('luck'));
-    if (Math.random() < chance) {
-      const g = rnd(L.min, L.max);
-      receive(g, 'Gain loto');
-      G.stats.lottoWins = (G.stats.lottoWins||0)+1;
-      addXp(30);
-      UI.toast('🍀 GAGNÉ +' + eur(g), 'good');
-      UI.confetti();
-    } else UI.toast('Pas de chance cette fois.', '');
+    if (Math.random() < chance) { const g = rnd(L.min, L.max); receive(g, 'Gain loto'); G.stats.lottoWins = (G.stats.lottoWins||0)+1; addXp(30); UI.toast('🍀 GAGNÉ +' + eur(g), 'good'); UI.confetti(); }
+    else UI.toast('Pas de chance cette fois.', '');
     refresh();
   },
 
-  illUnlock() {
-    if (balance() < DATA.illEntry) return UI.toast(DATA.illEntry + ' € requis.', 'bad');
-    pay(DATA.illEntry, 'Droit d’entrée'); G.ill.unlocked = true;
-    UI.toast('Réseau débloqué', 'warn'); refresh();
-  },
+  illUnlock() { if (balance() < DATA.illEntry) return UI.toast(DATA.illEntry + ' € requis.', 'bad'); pay(DATA.illEntry, 'Droit d’entrée'); G.ill.unlocked = true; UI.toast('Réseau débloqué', 'warn'); refresh(); },
   illDo(d) {
     const a = DATA.ill.find(x => x.id === d.id);
     if (a.reqBiz && !ownsBiz(a.reqBiz)) return UI.toast('Nécessite une banque.', 'bad');
     if (Date.now() < (G.ill.cd[a.id]||0)) return UI.toast('En recharge.', 'warn');
     if (balance() < a.cost) return UI.toast('Mise insuffisante.', 'bad');
     pay(a.cost, 'Mise — ' + a.n); G.ill.cd[a.id] = Date.now() + a.cd*1000;
-    if (Math.random() < a.risk) {
-      G.ill.heat = Math.min(100, G.ill.heat + a.heat*1.5);
-      const amende = a.cost*1.5; pay(amende, 'Amende');
-      UI.toast('Échec −' + eur(amende), 'bad');
-    } else {
-      const gain = rnd(a.gain[0], a.gain[1]); receive(gain, 'Gain — ' + a.n);
-      G.ill.heat = Math.min(100, G.ill.heat + a.heat);
-      UI.toast(a.n + ' +' + eur(gain), 'good');
-    }
-    if (G.ill.heat >= 100) {
-      G.jail = Date.now() + 60000; G.ill.heat = 30; G.stats.jailed = true;
-      const am = Math.max(500, balance()*0.1); pay(am, 'Amende interpellation');
-      UI.toast('GARDE À VUE 60 s −' + eur(am), 'bad');
-    }
+    if (Math.random() < a.risk) { G.ill.heat = Math.min(100, G.ill.heat + a.heat*1.5); const amende = a.cost*1.5; pay(amende, 'Amende'); UI.toast('Échec −' + eur(amende), 'bad'); }
+    else { const gain = rnd(a.gain[0], a.gain[1]); receive(gain, 'Gain — ' + a.n); G.ill.heat = Math.min(100, G.ill.heat + a.heat); UI.toast(a.n + ' +' + eur(gain), 'good'); }
+    if (G.ill.heat >= 100) { G.jail = Date.now() + 60000; G.ill.heat = 30; G.stats.jailed = true; const am = Math.max(500, balance()*0.1); pay(am, 'Amende interpellation'); UI.toast('GARDE À VUE 60 s −' + eur(am), 'bad'); }
     refresh();
   },
-  bribe() {
-    if (balance() < 800) return UI.toast('800 € requis.', 'bad');
-    pay(800, 'Pot-de-vin'); G.ill.heat = Math.max(0, G.ill.heat - 35);
-    UI.toast('Chaleur −35', 'good'); refresh();
-  },
+  bribe() { if (balance() < 800) return UI.toast('800 € requis.', 'bad'); pay(800, 'Pot-de-vin'); G.ill.heat = Math.max(0, G.ill.heat - 35); UI.toast('Chaleur −35', 'good'); refresh(); },
 
   claimMission(d) {
-    const m = G.missions.list[+d.i];
-    if (!m || m.claimed || m.prog < m.tgt) return;
+    const m = G.missions.list[+d.i]; if (!m || m.claimed || m.prog < m.tgt) return;
     m.claimed = true; G.stats.missionsDone = (G.stats.missionsDone||0)+1;
     receive(m.rew, 'Défi — ' + m.n); addXp(Math.round(m.rew/2));
     UI.toast('Défi +' + eur(m.rew), 'good'); UI.confetti(); refresh();
   },
   claimQuest(d) {
-    const q = G.quests.list[+d.i];
-    if (!q || q.claimed || q.prog < q.tgt) return;
-    q.claimed = true;
-    receive(q.rew, 'Quête — ' + q.n); addXp(q.xp || 30);
+    const q = G.quests.list[+d.i]; if (!q || q.claimed || q.prog < q.tgt) return;
+    q.claimed = true; receive(q.rew, 'Quête — ' + q.n); addXp(q.xp || 30);
     UI.toast('Quête +' + eur(q.rew) + ' +' + (q.xp||30) + ' XP', 'good'); UI.confetti(); refresh();
   },
 
   buySkill(d) {
-    const s = DATA.skills.find(x => x.id === d.id);
-    if (!s) return;
+    const s = DATA.skills.find(x => x.id === d.id); if (!s) return;
     const lvl = skillLvl(s.id);
     if (lvl >= s.maxLvl) return UI.toast('Niveau max atteint.', 'warn');
     const cost = Math.round(s.costBase * Math.pow(s.costGrow, lvl));
     if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Compétence — ' + s.n);
-    G.skills[s.id] = lvl + 1;
-    addXp(25);
+    pay(cost, 'Compétence — ' + s.n); G.skills[s.id] = lvl + 1; addXp(25);
     UI.toast(s.n + ' niveau ' + (lvl+1), 'good'); refresh();
   },
 
   buyPack(d) {
-    const p = DATA.packs.find(x => x.id === d.id);
-    if (!p) return;
-    G.pendingPack = p.id;
-    window.open(p.stripe, '_blank', 'noopener');
-    UI.toast('Paiement ouvert. Cliquez « J’ai payé » une fois réglé.', 'good');
-    refresh();
+    const p = DATA.packs.find(x => x.id === d.id); if (!p) return;
+    G.pendingPack = p.id; window.open(p.stripe, '_blank', 'noopener');
+    UI.toast('Paiement ouvert. Cliquez « J’ai payé » une fois réglé.', 'good'); refresh();
   },
   confirmPack() {
     if (!G.pendingPack) return UI.toast('Aucun paiement en attente.', 'warn');
-    const p = DATA.packs.find(x => x.id === G.pendingPack);
-    G.pendingPack = null;
-    receive(p.amount, 'Pack — ' + p.n);
-    G.stats.premium += p.amount;
-    UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount));
-    UI.toast('+' + eur0(p.amount) + ' crédités', 'good');
-    UI.confetti(); refresh();
+    const p = DATA.packs.find(x => x.id === G.pendingPack); G.pendingPack = null;
+    receive(p.amount, 'Pack — ' + p.n); G.stats.premium += p.amount;
+    UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount)); UI.toast('+' + eur0(p.amount) + ' crédités', 'good'); UI.confetti(); refresh();
   },
   cancelPack() { G.pendingPack = null; UI.toast('Achat annulé.', ''); refresh(); },
 
@@ -796,7 +749,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat','buyFood','train','offer','sign','openCreate','createBiz','buyMat','craft','buyStock','priceAdj','hire','hireConfirm','buyHome','rentHome','buyCar','deposit','withdraw','toLivret','fromLivret','loanTake','loanRepay','illDo','bribe','upgrade','mktDo','orderFill','lotto','buySkill','claimMission','claimQuest','buyVaccine','bookAppointment','openBank','leaveBank'];
+const GUARDED = ['eat','buyFood','train','offer','sign','openCreate','createBiz','buyMat','craft','buyStock','priceAdj','hire','hireConfirm','buyHome','rentHome','buyCar','deposit','withdraw','toLivret','fromLivret','loanTake','loanRepay','illDo','bribe','upgrade','mktDo','orderFill','lotto','buySkill','claimMission','claimQuest','buyVaccine','bookAppointment','openBank','leaveBank','doSendMoney','doAnnounce'];
 
 function save() {
   if (!G) return;
