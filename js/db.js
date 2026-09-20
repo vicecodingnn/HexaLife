@@ -1,4 +1,4 @@
-/* ═══════════ COUCHE BASE DE DONNÉES v8 (API serveur .db / repli local) ═══════════ */
+/* ═══════════ COUCHE BASE DE DONNÉES v9 (API serveur .db / repli local) ═══════════ */
 const DB = (() => {
   const UK = 'hl_users', SK = 'hl_session', TK = 'hl_token', TKU = 'hl_token_user';
   let mode = 'local';
@@ -20,6 +20,8 @@ const DB = (() => {
   return {
     mode: () => mode,
     label: () => mode === 'api' ? 'Base : serveur hexalife.db (partagée)' : 'Base : locale navigateur',
+    /* fetch authentifié (utilisé pour les routes protégées : clients, ping…) */
+    authFetch: (path, opts) => api(path, opts),
 
     async init() {
       try {
