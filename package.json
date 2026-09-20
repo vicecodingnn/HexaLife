@@ -1,0 +1,15 @@
+{
+  "name": "hexalife",
+  "version": "1.0.0",
+  "description": "Simulateur de vie française en temps réel",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["game", "simulation", "economy"],
+  "author": "",
+  "license": "MIT"
+}
