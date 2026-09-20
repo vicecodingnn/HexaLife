@@ -1,4 +1,4 @@
-/* ═══════════ MOTEUR v8 — bugs corrigés, santé, banques joueurs, sans bourse/succès ═══════════ */
+/* ═══════════ MOTEUR v9 — render silencieux (refresh), bugs corrigés ═══════════ */
 let G = null, W = null, TICK_TIMER = null;
 const T = { cashDisp: 0, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview', offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0, jobF: { sec:'', q:'', ok:false }, qT: null, netSign: 0 };
 
@@ -13,6 +13,8 @@ const foodById = id => DATA.foods.find(f => f.id === id);
 const upLvl = (b,id) => (b.ups && b.ups[id]) || 0;
 const perk = (b,id) => !!(b.perks && b.perks[id]);
 const isPlayerBank = id => typeof id === 'string' && id.indexOf('player:') === 0;
+/* render silencieux : pas de clignotement, scroll + champs préservés */
+function refresh() { UI.render(true); }
 
 function balance() { return G.bank.bankId ? G.bank.compte : G.cash; }
 function pushJ(label, amt) {
@@ -48,7 +50,7 @@ function genWorld() {
 
 function newGame(name) {
   return {
-    v: 8, name, created: Date.now(), last: Date.now(),
+    v: 9, name, created: Date.now(), last: Date.now(),
     cash: 2000, xp: 0, lottoCd: 0,
     vitals: { sante: 92, faim: 70, soif: 65 },
     health: { doctor: null, vaccines: [], sick: false, rdv: 0 },
@@ -82,7 +84,7 @@ function sanitize(s) {
   if (!Array.isArray(out.journal)) out.journal = [];
   if (!Array.isArray(out.jobs)) out.jobs = [];
   delete out.job; delete out.ach; delete out.portfolio; delete out.pets; delete out.friends;
-  out.v = 8;
+  out.v = 9;
   out.biz.forEach(b => {
     if (!b.ups) b.ups = {};
     if (!b.perks) b.perks = {};
@@ -115,7 +117,6 @@ function skillBonus(type) {
   return 0;
 }
 function carBonus() { return G.cars.length ? Math.max(...G.cars.map(i => DATA.cars[i].b)) : 0; }
-/* CORRECTIF BUG immobilier : houses contient des objets {i,...}, on lit h.i */
 function comfort() { return Math.min(10, G.houses.reduce((a,h) => a + (DATA.homes[h.i] ? DATA.homes[h.i].p/60000 : 0), 0)); }
 function hasShelter() { return !!G.rental || G.houses.length > 0; }
 function cov() { return G.insurances.reduce((m,id) => Math.max(m, (DATA.insurers.find(x => x.id === id)||{}).cov || 0), 0); }
@@ -194,7 +195,7 @@ function tick() {
     const fm = DATA.form.find(x => x.id === G.training.id);
     G.diplomas.push(fm.id); G.training = null; mission('train', 1); addXp(40);
     UI.toast('Formation terminée : ' + fm.n, 'good');
-    if (T.tab === 'carriere') UI.render();
+    if (T.tab === 'carriere') refresh();
   }
 
   if (now > W.weather.until) {
@@ -326,7 +327,7 @@ function pickProd(b) {
   return prods[0];
 }
 function maybeSaleFeed(prod, prix, bizName) {
-  const now = Date.now(); if (now - T.lastSaleFeed < 4000) return;
+    const now = Date.now(); if (now - T.lastSaleFeed < 4000) return;
   T.lastSaleFeed = now;
   UI.feed('<b>' + W.npcs[irnd(0,799)].n + '</b> achète « ' + prod + ' » à ' + esc(bizName) + ' <span class="money">+' + eur(prix) + '</span>');
 }
@@ -353,7 +354,7 @@ function fireEvent() {
   UI.toast(e.m + ' (' + delta + ')', e.t === 'good' ? 'good' : 'warn');
   UI.feed('<b>Événement :</b> ' + e.m + ' <span class="money">' + delta + '</span>');
   if (e.t === 'good') UI.confetti();
-  if (G.health.sick && T.tab === 'sante') UI.render();
+  if (G.health.sick && T.tab === 'sante') refresh();
 }
 
 function hospital() {
@@ -372,7 +373,7 @@ const A = {
     pay(f.p, 'Courses — ' + f.n); G.stats.spent += f.p;
     G.inv[d.id] = (G.inv[d.id]||0)+1;
     mission('shop', 1); addXp(2);
-    UI.toast(f.n + ' acheté', 'good'); UI.render();
+    UI.toast(f.n + ' acheté', 'good'); refresh();
   },
   eat(d, el) {
     const f = foodById(d.id); if (!f) return;
@@ -389,7 +390,7 @@ const A = {
       UI.toast('Trouble alimentaire : trop mangé ! Consultez un médecin.', 'bad');
     }
     UI.toast(f.n + ' consommé', 'good');
-    setTimeout(() => UI.render(), 380);
+    setTimeout(() => refresh(), 380);
   },
 
   train(d) {
@@ -398,10 +399,10 @@ const A = {
     if (balance() < f.cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(f.cost, 'Formation — ' + f.n); G.stats.spent += f.cost;
     G.training = { id: d.id, end: Date.now() + f.dur*1000 };
-    UI.toast('Formation commencée', 'good'); UI.render();
+    UI.toast('Formation commencée', 'good'); refresh();
   },
-  jobSec(d) { T.jobF.sec = d.v; UI.render(); },
-  jobOk() { T.jobF.ok = !T.jobF.ok; UI.render(); },
+  jobSec(d) { T.jobF.sec = d.v; refresh(); },
+  jobOk() { T.jobF.ok = !T.jobF.ok; refresh(); },
   offer(d) {
     const c = +d.c, o = +d.o, job = DATA.companies[c].o[o];
     if (playerTier() < job[2]) return UI.toast('Tier insuffisant.', 'bad');
@@ -422,12 +423,12 @@ const A = {
     G.jobs.push({ c, o, title: job[0], h: job[1], mode, since: Date.now(), mins: 0, promo: false });
     addXp(30); UI.closeModal();
     UI.toast('Contrat signé : ' + job[0], 'good');
-    UI.updateTop(); UI.render();
+    UI.updateTop(); refresh();
   },
   quitJob(d) {
     const i = +d.i; const j = G.jobs[i]; if (!j) return;
     G.jobs.splice(i, 1);
-    UI.toast('Quitté : ' + j.title, 'warn'); UI.updateTop(); UI.render();
+    UI.toast('Quitté : ' + j.title, 'warn'); UI.updateTop(); refresh();
   },
 
   openCreate(d) {
@@ -452,7 +453,7 @@ const A = {
     UI.closeModal();
     UI.confetti();
     UI.toast('🎉 ' + bt.label + ' « ' + name + ' » fondée !', 'good');
-    T.selBiz = G.biz.length - 1; T.bizTab = 'overview'; UI.render();
+    T.selBiz = G.biz.length - 1; T.bizTab = 'overview'; refresh();
   },
   selBiz(d) { T.selBiz = +d.i; T.bizTab = 'overview'; UI.render(); },
   backBiz() { T.selBiz = -1; UI.render(); },
@@ -463,14 +464,14 @@ const A = {
     if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(cost, 'Matières — ' + m.n); G.stats.spent += cost;
     b.mats[d.m] = (b.mats[d.m]||0)+q;
-    UI.toast('+' + q + ' × ' + m.n, 'good'); UI.render();
+    UI.toast('+' + q + ' × ' + m.n, 'good'); refresh();
   },
   craft(d) {
     const b = G.biz[+d.b], rec = DATA.bizTypes.boulangerie.prods.find(p => p.id === d.p);
     for (let i = 0; i < +d.q; i++) { if (!hasMats(b, rec)) break; useMats(b, rec); b.stock[rec.id] = (b.stock[rec.id]||0)+1; }
-    UI.render();
+    refresh();
   },
-  priceAdj(d) { const b = G.biz[+d.b]; b.prices[d.p] = Math.max(0.1, +((b.prices[d.p]||1) + +d.v).toFixed(2)); UI.render(); },
+  priceAdj(d) { const b = G.biz[+d.b]; b.prices[d.p] = Math.max(0.1, +((b.prices[d.p]||1) + +d.v).toFixed(2)); refresh(); },
   buyStock(d) {
     const b = G.biz[+d.b], p = DATA.bizTypes.magasin.prods.find(x => x.id === d.p);
     if (!b || !p) return;
@@ -478,7 +479,7 @@ const A = {
     if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(cost, 'Grossiste — ' + p.n); G.stats.spent += cost;
     b.stock[p.id] = (b.stock[p.id]||0)+q;
-    UI.toast('+' + q + ' × ' + p.n, 'good'); UI.render();
+    UI.toast('+' + q + ' × ' + p.n, 'good'); refresh();
   },
   upgrade(d) {
     const b = G.biz[+d.b], u = DATA.ups[b.type].find(x => x.id === d.u);
@@ -487,7 +488,7 @@ const A = {
     const cost = Math.round(u.cost * Math.pow(u.grow, lvl) * skillBonus('upgrade'));
     if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(cost, 'Upgrade — ' + u.n); b.ups[u.id] = lvl+1; addXp(25);
-    UI.toast(u.n + ' niv ' + (lvl+1), 'good'); UI.render();
+    UI.toast(u.n + ' niv ' + (lvl+1), 'good'); refresh();
   },
   mktDo(d) {
     const b = G.biz[+d.b];
@@ -500,7 +501,7 @@ const A = {
     else if (a.kind === 'promo') { b.promoUntil = Date.now() + a.dur*1000; UI.toast('⚡ Flash : -10 % ×1,8 / ' + a.dur + ' s', 'good'); }
     else if (a.kind === 'perk') { b.perks[a.perk] = true; if (a.rep) b.rep = clamp(b.rep + a.rep, 5, 100); UI.toast('✓ ' + a.n + ' actif', 'good'); }
     else if (a.kind === 'accounts') { b.accounts += 25; UI.toast('✓ +25 comptes', 'good'); }
-    addXp(15); UI.render();
+    addXp(15); refresh();
   },
   orderFill(d) {
     const b = G.biz[+d.b]; const o = b.order;
@@ -513,7 +514,7 @@ const A = {
     G.stats.orders = (G.stats.orders||0) + 1;
     addXp(20);
     UI.toast('📦 Commande honorée +' + eur(o.reward), 'good');
-    UI.confetti(); UI.render();
+    UI.confetti(); refresh();
   },
   hire(d) {
     const b = G.biz[+d.b], max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
@@ -524,20 +525,20 @@ const A = {
       '<button class="btn btn-primary btn-sm" data-act="hireConfirm" data-b="' + d.b + '" data-i="' + i + '">Embaucher</button></div>').join('') +
       '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Fermer</button></div>');
   },
-  hireConfirm(d) { const b = G.biz[+d.b], c = T.cands[+d.i]; if (!c) return; b.emps.push({ n: c.n, h: c.h }); UI.closeModal(); UI.toast(c.n + ' embauché·e', 'good'); UI.render(); },
-  fire(d) { const b = G.biz[+d.b]; const e = b.emps.splice(+d.i, 1); UI.toast((e[0]?.n || 'Salarié') + ' licencié·e', 'warn'); UI.render(); },
+  hireConfirm(d) { const b = G.biz[+d.b], c = T.cands[+d.i]; if (!c) return; b.emps.push({ n: c.n, h: c.h }); UI.closeModal(); UI.toast(c.n + ' embauché·e', 'good'); refresh(); },
+  fire(d) { const b = G.biz[+d.b]; const e = b.emps.splice(+d.i, 1); UI.toast((e[0]?.n || 'Salarié') + ' licencié·e', 'warn'); refresh(); },
   buyMandat(d) {
     const b = G.biz[+d.b];
     if (balance() < 300) return UI.toast('300 € requis.', 'bad');
     pay(300, 'Mandat'); b.mandats = (b.mandats||0)+1;
-    UI.toast('Mandat signé', 'good'); UI.render();
+    UI.toast('Mandat signé', 'good'); refresh();
   },
   bankAdj(d) {
     const b = G.biz[+d.b];
     if (d.k === 'tc') b.tauxCredit = clamp(b.tauxCredit + +d.v, 1, 12);
     if (d.k === 'tl') b.tauxLivret = clamp(b.tauxLivret + +d.v, 0, 5);
     if (d.k === 'mkt') { if (balance() < 1000) return UI.toast('1 000 € requis.', 'bad'); pay(1000, 'Pub'); b.mkt++; UI.toast('Campagne lancée', 'good'); }
-    UI.render();
+    refresh();
   },
 
   buyHome(d) {
@@ -545,16 +546,16 @@ const A = {
     if (balance() < h.p) return UI.toast('Apport insuffisant.', 'bad');
     pay(h.p, 'Achat — ' + h.n); G.stats.spent += h.p;
     G.houses.push({ i: +d.i, v: h.p, c: h.c, rent: +(h.p*0.004/60).toFixed(2), tenant: false });
-    addXp(60); UI.toast('Propriétaire : ' + h.n, 'good'); UI.confetti(); UI.render();
+    addXp(60); UI.toast('Propriétaire : ' + h.n, 'good'); UI.confetti(); refresh();
   },
-  rentHome(d) { G.rental = { i: +d.i, loyer: DATA.rentals[+d.i].loyer }; UI.toast('Bail signé', 'good'); UI.render(); },
-  cancelRent() { G.rental = null; UI.toast('Bail résilié', 'warn'); UI.render(); },
-  sellHome(d) { const h = G.houses[+d.i]; const prix = h.v*0.95; receive(prix, 'Vente immo'); G.houses.splice(+d.i,1); UI.toast('Vendu +' + eur(prix), 'good'); UI.render(); },
+  rentHome(d) { G.rental = { i: +d.i, loyer: DATA.rentals[+d.i].loyer }; UI.toast('Bail signé', 'good'); refresh(); },
+  cancelRent() { G.rental = null; UI.toast('Bail résilié', 'warn'); refresh(); },
+  sellHome(d) { const h = G.houses[+d.i]; const prix = h.v*0.95; receive(prix, 'Vente immo'); G.houses.splice(+d.i,1); UI.toast('Vendu +' + eur(prix), 'good'); refresh(); },
   rentOut(d) {
     const h = G.houses[+d.i];
     if (h.tenant) { h.tenant = false; UI.toast('Congé donné', 'warn'); }
     else { h.tenant = true; h.rent = +(h.v*0.004/60).toFixed(2); UI.toast('Mis en location', 'good'); }
-    UI.render();
+    refresh();
   },
 
   buyCar(d) {
@@ -562,9 +563,9 @@ const A = {
     if (G.cars.includes(+d.i)) return;
     if (balance() < c.p) return UI.toast('Fonds insuffisants.', 'bad');
     pay(c.p, 'Achat — ' + c.n); G.stats.spent += c.p; G.cars.push(+d.i); addXp(40);
-    UI.toast(c.n + ' livrée +' + Math.round(c.b*100) + ' %', 'good'); UI.render();
+    UI.toast(c.n + ' livrée +' + Math.round(c.b*100) + ' %', 'good'); refresh();
   },
-  sellCar(d) { const i = +d.i, c = DATA.cars[i]; G.cars = G.cars.filter(x => x !== i); receive(c.p*0.6, 'Vente — ' + c.n); UI.toast(c.n + ' revendue', 'good'); UI.render(); },
+  sellCar(d) { const i = +d.i, c = DATA.cars[i]; G.cars = G.cars.filter(x => x !== i); receive(c.p*0.6, 'Vente — ' + c.n); UI.toast(c.n + ' revendue', 'good'); refresh(); },
 
   openBank(d) {
     G.bank.bankId = d.id;
@@ -573,7 +574,7 @@ const A = {
     if (G.cash > 0) { G.bank.compte += G.cash; pushJ('Versement initial', G.cash); G.cash = 0; }
     UI.cardFx('Ouverture de compte', eur(0));
     UI.toast('Compte ouvert : ' + (G.bank.bankName || 'banque'), 'good');
-    UI.render();
+    refresh();
   },
   leaveBank() {
     if (!G.bank.bankId) return UI.toast('Aucun compte à clôturer.', 'warn');
@@ -583,33 +584,33 @@ const A = {
     G.bank = { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: G.bank.loans };
     UI.cardFx('Compte clôturé', '+' + eur(total));
     UI.toast('Compte clôturé, fonds récupérés.', 'warn');
-    UI.render();
+    refresh();
   },
   bankDetails(d) { UI.bankDetails(d); },
   deposit() {
     const v = +((document.getElementById('bankAmt')||{}).value || 0);
     if (v <= 0 || G.cash < v) return UI.toast('Liquidités insuffisantes.', 'bad');
     G.cash -= v; G.bank.compte += v; pushJ('Dépôt', v);
-    UI.cardFx('Dépôt sur compte', '+' + eur(v)); UI.render();
+    UI.cardFx('Dépôt sur compte', '+' + eur(v)); refresh();
   },
   withdraw() {
     const v = +((document.getElementById('bankAmt')||{}).value || 0);
     if (v <= 0 || G.bank.compte < v) return UI.toast('Montant invalide.', 'bad');
     G.bank.compte -= v; G.cash += v; pushJ('Retrait espèces', -v);
-    UI.cardFx('Retrait espèces', '−' + eur(v)); UI.render();
+    UI.cardFx('Retrait espèces', '−' + eur(v)); refresh();
   },
   toLivret() {
     const v = +((document.getElementById('bankAmt')||{}).value || 0);
     if (v <= 0 || G.bank.compte < v) return UI.toast('Montant invalide.', 'bad');
     if (G.bank.livret + v > 22950) return UI.toast('Plafond Livret A : 22 950 €.', 'warn');
     G.bank.compte -= v; G.bank.livret += v; pushJ('Vers Livret A', -v);
-    UI.cardFx('Vers Livret A', '−' + eur(v)); UI.render();
+    UI.cardFx('Vers Livret A', '−' + eur(v)); refresh();
   },
   fromLivret() {
     const v = +((document.getElementById('bankAmt')||{}).value || 0);
     if (v <= 0 || G.bank.livret < v) return UI.toast('Livret A insuffisant.', 'bad');
     G.bank.livret -= v; G.bank.compte += v; pushJ('Livret A → compte', v);
-    UI.cardFx('Livret A → compte', '+' + eur(v)); UI.render();
+    UI.cardFx('Livret A → compte', '+' + eur(v)); refresh();
   },
   loanTake(d) {
     const v = +((document.getElementById('loanAmt')||{}).value || 0);
@@ -620,28 +621,28 @@ const A = {
     G.bank.loans.push({ n: L.n, total, mens: +(total/mois).toFixed(2), reste: +total.toFixed(2) });
     receive(v, 'Crédit — ' + L.n);
     UI.cardFx('Crédit ' + L.n, '+' + eur(v));
-    UI.toast('Crédit accordé +' + eur(v), 'good'); UI.render();
+    UI.toast('Crédit accordé +' + eur(v), 'good'); refresh();
   },
   loanRepay(d) {
     const L = G.bank.loans[+d.i];
     if (balance() < L.reste) return UI.toast('Il reste ' + eur(L.reste) + '.', 'bad');
     pay(L.reste, 'Remboursement — ' + L.n); G.bank.loans.splice(+d.i,1);
     UI.cardFx('Crédit soldé', '−' + eur(L.reste));
-    UI.toast('Crédit soldé ✓', 'good'); UI.render();
+    UI.toast('Crédit soldé ✓', 'good'); refresh();
   },
 
   insure(d) {
     const i = G.insurances.indexOf(d.id);
     if (i >= 0) { G.insurances.splice(i,1); UI.toast('Assurance résiliée', 'warn'); }
     else { G.insurances.push(d.id); UI.toast('Assuré·e chez ' + DATA.insurers.find(x => x.id === d.id).n, 'good'); }
-    UI.render();
+    refresh();
   },
 
   chooseDoctor(d) {
     const doc = DATA.doctors.find(x => x.id === d.id);
     if (!doc) return;
     G.health.doctor = d.id;
-    UI.toast('Médecin traitant : ' + doc.n, 'good'); UI.render();
+    UI.toast('Médecin traitant : ' + doc.n, 'good'); refresh();
   },
   buyVaccine(d) {
     const v = DATA.vaccines.find(x => x.id === d.id);
@@ -650,7 +651,7 @@ const A = {
     if (balance() < v.cost) return UI.toast('Fonds insuffisants.', 'bad');
     pay(v.cost, 'Vaccin — ' + v.n);
     G.health.vaccines.push(d.id);
-    UI.toast('💉 ' + v.n + ' administré', 'good'); UI.render();
+    UI.toast('💉 ' + v.n + ' administré', 'good'); refresh();
   },
   bookAppointment() {
     if (!G.health.doctor) return UI.toast('Choisissez d’abord un médecin traitant.', 'warn');
@@ -665,7 +666,7 @@ const A = {
     UI.pulseVital('rowSante');
     UI.confetti();
     UI.toast('🩺 ' + doc.n + ' vous a soigné (−' + eur(cost) + ' après remboursement)', 'good');
-    UI.render();
+    refresh();
   },
 
   lotto() {
@@ -684,13 +685,13 @@ const A = {
       UI.toast('🍀 GAGNÉ +' + eur(g), 'good');
       UI.confetti();
     } else UI.toast('Pas de chance cette fois.', '');
-    UI.render();
+    refresh();
   },
 
   illUnlock() {
     if (balance() < DATA.illEntry) return UI.toast(DATA.illEntry + ' € requis.', 'bad');
     pay(DATA.illEntry, 'Droit d’entrée'); G.ill.unlocked = true;
-    UI.toast('Réseau débloqué', 'warn'); UI.render();
+    UI.toast('Réseau débloqué', 'warn'); refresh();
   },
   illDo(d) {
     const a = DATA.ill.find(x => x.id === d.id);
@@ -712,12 +713,12 @@ const A = {
       const am = Math.max(500, balance()*0.1); pay(am, 'Amende interpellation');
       UI.toast('GARDE À VUE 60 s −' + eur(am), 'bad');
     }
-    UI.render();
+    refresh();
   },
   bribe() {
     if (balance() < 800) return UI.toast('800 € requis.', 'bad');
     pay(800, 'Pot-de-vin'); G.ill.heat = Math.max(0, G.ill.heat - 35);
-    UI.toast('Chaleur −35', 'good'); UI.render();
+    UI.toast('Chaleur −35', 'good'); refresh();
   },
 
   claimMission(d) {
@@ -725,14 +726,14 @@ const A = {
     if (!m || m.claimed || m.prog < m.tgt) return;
     m.claimed = true; G.stats.missionsDone = (G.stats.missionsDone||0)+1;
     receive(m.rew, 'Défi — ' + m.n); addXp(Math.round(m.rew/2));
-    UI.toast('Défi +' + eur(m.rew), 'good'); UI.confetti(); UI.render();
+    UI.toast('Défi +' + eur(m.rew), 'good'); UI.confetti(); refresh();
   },
   claimQuest(d) {
     const q = G.quests.list[+d.i];
     if (!q || q.claimed || q.prog < q.tgt) return;
     q.claimed = true;
     receive(q.rew, 'Quête — ' + q.n); addXp(q.xp || 30);
-    UI.toast('Quête +' + eur(q.rew) + ' +' + (q.xp||30) + ' XP', 'good'); UI.confetti(); UI.render();
+    UI.toast('Quête +' + eur(q.rew) + ' +' + (q.xp||30) + ' XP', 'good'); UI.confetti(); refresh();
   },
 
   buySkill(d) {
@@ -745,7 +746,7 @@ const A = {
     pay(cost, 'Compétence — ' + s.n);
     G.skills[s.id] = lvl + 1;
     addXp(25);
-    UI.toast(s.n + ' niveau ' + (lvl+1), 'good'); UI.render();
+    UI.toast(s.n + ' niveau ' + (lvl+1), 'good'); refresh();
   },
 
   buyPack(d) {
@@ -754,7 +755,7 @@ const A = {
     G.pendingPack = p.id;
     window.open(p.stripe, '_blank', 'noopener');
     UI.toast('Paiement ouvert. Cliquez « J’ai payé » une fois réglé.', 'good');
-    UI.render();
+    refresh();
   },
   confirmPack() {
     if (!G.pendingPack) return UI.toast('Aucun paiement en attente.', 'warn');
@@ -764,9 +765,9 @@ const A = {
     G.stats.premium += p.amount;
     UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount));
     UI.toast('+' + eur0(p.amount) + ' crédités', 'good');
-    UI.confetti(); UI.render();
+    UI.confetti(); refresh();
   },
-  cancelPack() { G.pendingPack = null; UI.toast('Achat annulé.', ''); UI.render(); },
+  cancelPack() { G.pendingPack = null; UI.toast('Achat annulé.', ''); refresh(); },
 
   deleteAccount() {
     if (!confirm('SUPPRIMER DÉFINITIVEMENT votre compte et toutes vos données ?')) return;
