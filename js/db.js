@@ -1,9 +1,4 @@
-/* ─────────────────────────────────────────────────────────────
-   COUCHE BASE DE DONNÉES v2 — double mode :
-   • mode API  : serveur Node (server/server.js) → fichier hexalife.db sur disque
-   • mode local: repli automatique (Neocities statique) → localStorage par utilisateur
-   Le mode est détecté au démarrage via GET /api/health.
-───────────────────────────────────────────────────────────── */
+/* ═══════════ COUCHE BASE DE DONNÉES v8 (API serveur .db / repli local) ═══════════ */
 const DB = (() => {
   const UK = 'hl_users', SK = 'hl_session', TK = 'hl_token', TKU = 'hl_token_user';
   let mode = 'local';
@@ -24,7 +19,7 @@ const DB = (() => {
 
   return {
     mode: () => mode,
-    label: () => mode === 'api' ? 'Base : serveur hexalife.db (partagée)' : 'Base : locale navigateur (Neocities)',
+    label: () => mode === 'api' ? 'Base : serveur hexalife.db (partagée)' : 'Base : locale navigateur',
 
     async init() {
       try {
@@ -49,8 +44,8 @@ const DB = (() => {
       }
       const all = users();
       if (all[u]) return { err: 'Ce compte existe déjà.' };
-      if (Object.values(all).some(x => x.email === email.toLowerCase())) return { err: 'Cet e-mail est déjà utilisé.' };
-      all[u] = { pass: hash(p), email: email.toLowerCase(), created: Date.now() };
+      if (Object.values(all).some(x => x.email === (email||'').toLowerCase())) return { err: 'Cet e-mail est déjà utilisé.' };
+      all[u] = { pass: hash(p), email: (email||'').toLowerCase(), created: Date.now() };
       putUsers(all); localStorage.setItem(SK, u);
       return { ok: true };
     },
@@ -82,14 +77,23 @@ const DB = (() => {
       }
       try { localStorage.setItem('hl_save_' + u, JSON.stringify(state)); return true; } catch (e) { return false; }
     },
-
     async loadGame(u) {
       if (mode === 'api' && token) {
         try { const j = await api('/api/load'); return j.state || null; } catch (e) { return null; }
       }
       try { return JSON.parse(localStorage.getItem('hl_save_' + u)); } catch (e) { return null; }
     },
+    deleteSave(u) { localStorage.removeItem('hl_save_' + u); },
 
-    deleteSave(u) { localStorage.removeItem('hl_save_' + u); }
+    async deleteAccount(u) {
+      if (mode === 'api' && token) {
+        try { await api('/api/delete', { method: 'POST' }); } catch (e) {}
+        token = null; localStorage.removeItem(TK); localStorage.removeItem(TKU); localStorage.removeItem(SK);
+        return true;
+      }
+      const all = users(); delete all[u]; putUsers(all);
+      localStorage.removeItem('hl_save_' + u); localStorage.removeItem(SK);
+      return true;
+    }
   };
 })();
