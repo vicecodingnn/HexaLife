@@ -47,12 +47,12 @@
   <div class="auth-wrap">
     <div class="auth-left">
       <div class="auth-brand">HEXA<span>LIFE</span></div>
-      <p class="auth-pitch">Créez votre citoyen, passez des diplômes, signez un CDI à temps plein ou partiel, fondez votre boulangerie, votre agence immobilière ou votre propre banque. 800 citoyens vivent et consomment autour de vous, en direct.</p>
+      <p class="auth-pitch">Créez votre citoyen, passez des diplômes, signez un CDI, fondez votre boulangerie, votre agence immobilière ou votre propre banque. 800 citoyens vivent et consomment autour de vous, en direct.</p>
       <ul class="auth-points">
-        <li>Salaire versé sur votre compte, impôts prélevés dessus</li>
-        <li>Temps plein ou partiel : cumulez deux jobs malins</li>
-        <li>Panneaux d'entreprise complets : prod, RH, upgrades, compta</li>
-        <li>Succès, défis, niveaux et opportunités flash</li>
+        <li>Économie simulée en temps réel, en euros</li>
+        <li>Fiscalité française : prélèvement à la source, IS, URSSAF</li>
+        <li>800 citoyens actifs : clients, salariés, patrons</li>
+        <li>Défis, niveaux, tutoriel guidé et marché noir</li>
       </ul>
       <div class="auth-skyline" id="authSky"></div>
     </div>
@@ -118,18 +118,20 @@
   <div id="boostBar" class="boost" hidden><span id="boostTxt"></span><span class="mono" id="boostCd"></span></div>
 
   <div class="hud">
-    <nav class="rail" id="rail"></nav>
+    <aside class="rail-wrap">
+      <nav class="rail-scroll" id="rail"></nav>
+      <!-- Jauges vitales : ancrées tout en bas à gauche -->
+      <div class="vitals">
+        <div class="v-row" id="rowSante"><span class="v-ico" style="color:var(--green)">♥</span><span class="v-name">Santé</span>
+          <div class="bar b-green"><div class="fill" id="barSante"></div></div><span class="v-num" id="numSante">100</span></div>
+        <div class="v-row" id="rowFaim"><span class="v-ico" style="color:var(--orange)">◆</span><span class="v-name">Faim</span>
+          <div class="bar b-orange"><div class="fill" id="barFaim"></div></div><span class="v-num" id="numFaim">100</span></div>
+        <div class="v-row" id="rowSoif"><span class="v-ico" style="color:var(--blue)">◈</span><span class="v-name">Soif</span>
+          <div class="bar b-blue"><div class="fill" id="barSoif"></div></div><span class="v-num" id="numSoif">100</span></div>
+        <div class="v-status" id="vStatus"></div>
+      </div>
+    </aside>
     <main class="view" id="view"></main>
-  </div>
-
-  <div class="vitals">
-    <div class="v-row" id="rowSante"><span class="v-ico" style="color:var(--green)">♥</span><span class="v-name">Santé</span>
-      <div class="bar b-green"><div class="fill" id="barSante"></div></div><span class="v-num" id="numSante">100</span></div>
-    <div class="v-row" id="rowFaim"><span class="v-ico" style="color:var(--orange)">◆</span><span class="v-name">Faim</span>
-      <div class="bar b-orange"><div class="fill" id="barFaim"></div></div><span class="v-num" id="numFaim">100</span></div>
-    <div class="v-row" id="rowSoif"><span class="v-ico" style="color:var(--blue)">◈</span><span class="v-name">Soif</span>
-      <div class="bar b-blue"><div class="fill" id="barSoif"></div></div><span class="v-num" id="numSoif">100</span></div>
-    <div class="v-status" id="vStatus"></div>
   </div>
 
   <div id="jailOv" class="jail" hidden>
