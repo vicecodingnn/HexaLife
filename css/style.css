@@ -1,4 +1,4 @@
-/* ═══════════ HEXALIFE v7 — vitales ancrées en bas à gauche ═══════════ */
+/* ═══════════ HEXALIFE v8 — CSS complet ═══════════ */
 [hidden]{display:none !important}
 :root{
   --bg0:#0c1317; --bg1:#101a20; --panel:#151f26; --panel2:#192731; --panel3:#1e303b;
@@ -140,14 +140,13 @@ input,select{font-family:inherit}
 @keyframes fxUp{from{opacity:0;transform:translateY(8px)}18%{opacity:1}to{opacity:0;transform:translateY(-36px)}}
 @keyframes fxDown{from{opacity:0;transform:translateY(-8px)}18%{opacity:1}to{opacity:0;transform:translateY(32px)}}
 
-/* ═══════════ CARTE BLEUE 3D ═══════════ */
+/* ═══════════ CARTE BLEUE TRANSACTION (cardFx) ═══════════ */
 .cardfx{position:fixed;inset:0;z-index:95;display:flex;align-items:center;justify-content:center;pointer-events:none;perspective:1200px}
 .cardfx-card{width:340px;height:210px;border-radius:18px;padding:22px 26px;color:#eaf4ff;position:relative;overflow:hidden;
   background:linear-gradient(135deg,#0a2540 0%,#1a4d80 40%,#2a72b0 100%);
   box-shadow:0 20px 60px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.12) inset;
   display:flex;flex-direction:column;justify-content:space-between;
-  animation:cardMove 1.7s cubic-bezier(.3,.8,.3,1) both;
-  transform-style:preserve-3d}
+  animation:cardMove 1.7s cubic-bezier(.3,.8,.3,1) both;transform-style:preserve-3d}
 .cardfx-card::before{content:"";position:absolute;inset:0;border-radius:18px;
   background:repeating-linear-gradient(135deg,rgba(255,255,255,.02) 0 2px,transparent 2px 8px);pointer-events:none}
 .cardfx-card::after{content:"";position:absolute;inset:0;border-radius:18px;
@@ -175,6 +174,32 @@ input,select{font-family:inherit}
   100%{transform:translate(80vw,-40px) rotateY(-95deg) rotateX(10deg) scale(.9);opacity:0}}
 @keyframes cardShine{from{transform:translateX(-120%)}to{transform:translateX(120%)}}
 
+/* ═══════════ CARTE BANCAIRE PERSISTANTE (3D) ═══════════ */
+.bankcard{width:340px;max-width:100%;height:200px;border-radius:18px;padding:20px 24px;color:#eaf4ff;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#0a2540 0%,#1a4d80 45%,#2a72b0 100%);
+  box-shadow:0 16px 44px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.12) inset;
+  display:flex;flex-direction:column;justify-content:space-between;
+  transform-style:preserve-3d;transition:transform .45s cubic-bezier(.2,.9,.3,1.2);animation:cardIn .6s cubic-bezier(.2,.9,.3,1.2) both}
+.bankcard.small{width:300px;height:178px;padding:16px 20px}
+.bankcard:hover{transform:rotateY(-14deg) rotateX(8deg) scale(1.04)}
+@keyframes cardIn{from{opacity:0;transform:translateY(24px) rotateY(-40deg)}to{opacity:1;transform:none}}
+.bc-shine{position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.30) 50%,transparent 65%);animation:bcShine 3.2s ease-in-out infinite;mix-blend-mode:overlay}
+@keyframes bcShine{0%{transform:translateX(-120%)}60%,100%{transform:translateX(120%)}}
+.bc-top{display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2}
+.bc-chip{width:42px;height:30px;border-radius:6px;background:linear-gradient(135deg,#e8c06a,#c99a3a);box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.bc-brand{font-family:var(--disp);font-weight:800;letter-spacing:1.5px;font-size:12px;opacity:.9}
+.bc-num{font-family:var(--mono);letter-spacing:3px;font-size:16px;opacity:.95;position:relative;z-index:2}
+.bc-bottom{display:flex;justify-content:space-between;align-items:flex-end;position:relative;z-index:2}
+.bc-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:1px;opacity:.7}
+.bc-name{font-weight:700;font-size:13px}
+.bc-bal{font-family:var(--mono);font-size:20px;font-weight:700;color:#ffe9b0;text-shadow:0 2px 6px rgba(0,0,0,.5)}
+
+/* ═══════════ OFFRES DE BANQUE ═══════════ */
+.bank-offer{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:transform .18s,border-color .18s;animation:panelIn .4s both}
+.bank-offer:hover{transform:translateY(-3px);border-color:var(--gold-dk)}
+.bo-name{font-weight:700;font-size:14.5px}
+.bo-det{font-size:12px;color:var(--mut);margin-top:3px}
+
 .ticker{flex:0 0 auto;background:#0a1013;border-bottom:1px solid var(--line);overflow:hidden;height:30px;display:flex;align-items:center}
 .ticker-track{white-space:nowrap;font-family:var(--mono);font-size:12px;color:var(--mut);animation:tickMove 60s linear infinite;padding-left:100%}
 .ticker-track b{color:var(--gold)} .ticker-track .dn{color:var(--red)} .ticker-track .up{color:var(--green)}
@@ -190,7 +215,7 @@ input,select{font-family:inherit}
   background:linear-gradient(90deg,rgba(75,179,128,.16),rgba(75,179,128,.03));border-bottom:1px solid #2f6b4d;animation:boostPulse 2.2s ease-in-out infinite}
 @keyframes boostPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
 
-/* ═══════════ HUD : rail + vitales en bas à gauche ═══════════ */
+/* ═══════════ HUD : rail + vitales bas gauche ═══════════ */
 .hud{flex:1;display:flex;min-height:0;position:relative;z-index:2}
 .rail-wrap{width:216px;flex:0 0 auto;background:#0d1419;border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .rail-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;padding:14px 10px 10px}
@@ -203,7 +228,6 @@ input,select{font-family:inherit}
 .nav-btn .bdg{margin-left:auto;background:var(--gold);color:#231703;font-size:10px;font-weight:800;border-radius:10px;padding:1px 6px;animation:bdgPulse 1.5s ease-in-out infinite}
 @keyframes bdgPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
 
-/* Jauges vitales : bloc fixe tout en bas du rail gauche */
 .vitals{flex:0 0 auto;border-top:1px solid var(--line2);background:rgba(13,21,26,.97);padding:12px 14px 10px;box-shadow:0 -4px 14px rgba(0,0,0,.35)}
 .v-row{display:flex;align-items:center;margin-bottom:9px;transition:transform .2s}
 .v-row.pulse{animation:vPulse .6s ease}
@@ -212,6 +236,7 @@ input,select{font-family:inherit}
 .v-name{width:44px;font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.8px;font-weight:600;flex:0 0 auto}
 .vitals .bar{margin:0 8px;height:8px;border-radius:4px}
 .v-num{width:26px;text-align:right;font-family:var(--mono);font-size:11.5px;font-weight:700;flex:0 0 auto}
+.v-num.neg{color:var(--red)}
 .v-status{font-size:10.5px;color:var(--dim);border-top:1px solid var(--line);padding-top:8px;margin-top:2px;text-align:center;line-height:1.35}
 .v-status.warn{color:var(--orange)} .v-status.bad{color:var(--red)}
 .float-txt{position:fixed;left:236px;bottom:150px;z-index:70;font-family:var(--mono);font-weight:700;font-size:15px;pointer-events:none;animation:rise 1.3s ease-out both}
@@ -263,7 +288,7 @@ input.mini{width:110px;padding:7px 9px;background:#0d151a;border:1px solid var(-
 input.mini:focus{outline:none;border-color:var(--gold)}
 select.mini{padding:8px 10px;background:#0d151a;border:1px solid var(--line);border-radius:4px;color:var(--ink)}
 
-/* offres */
+/* offres emploi */
 .job-filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
 .job-filters input[type=text]{padding:8px 12px;background:#0d151a;border:1px solid var(--line);border-radius:5px;color:var(--ink);min-width:220px}
 .job-filters input[type=text]:focus{outline:none;border-color:var(--gold)}
@@ -303,17 +328,6 @@ select.mini{padding:8px 10px;background:#0d151a;border:1px solid var(--line);bor
 .inv-card.chomp{animation:chomp .4s ease both}
 @keyframes chomp{0%{transform:scale(1)}40%{transform:scale(1.12) rotate(-3deg)}100%{transform:scale(.9);opacity:.4}}
 
-/* succès */
-.ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:12px}
-.ach{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:13px 10px;text-align:center;transition:transform .15s}
-.ach:hover{transform:translateY(-2px)}
-.ach.on{border-color:var(--gold-dk);background:rgba(232,176,75,.06);animation:achPop .45s cubic-bezier(.2,.9,.3,1.3) both}
-.ach.off{opacity:.42;filter:grayscale(1)}
-@keyframes achPop{from{transform:scale(.85);opacity:.4}to{transform:scale(1);opacity:1}}
-.ach .a-i{font-size:24px}
-.ach .a-n{font-weight:700;font-size:12.5px;margin-top:6px}
-.ach .a-d{font-size:10.5px;color:var(--mut);margin-top:3px;line-height:1.35}
-
 /* compétences */
 .skill-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:18px;transition:transform .15s,border-color .15s;animation:panelIn .4s both}
 .skill-card:hover{transform:translateY(-3px);border-color:var(--gold-dk)}
@@ -324,13 +338,23 @@ select.mini{padding:8px 10px;background:#0d151a;border:1px solid var(--line);bor
 .sk-level{margin:6px 0}
 .sk-bar{margin:10px 0}
 
+/* ═══════════ BOUTIQUE ANIMÉE ═══════════ */
+.pack-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.pack-card{position:relative;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:26px 20px;text-align:center;overflow:hidden;transition:transform .25s,box-shadow .25s,border-color .25s;animation:panelIn .5s both}
+.pack-card:hover{transform:translateY(-10px) scale(1.03);border-color:var(--gold);box-shadow:0 20px 50px rgba(232,176,75,.18)}
+.pack-glow{position:absolute;inset:-40%;background:conic-gradient(from 0deg,transparent,rgba(232,176,75,.18),transparent 40%);animation:packSpin 4s linear infinite;pointer-events:none}
+@keyframes packSpin{to{transform:rotate(360deg)}}
+.pack-best{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--gold);color:#231703;font-size:10px;font-weight:800;border-radius:20px;padding:3px 10px;animation:bdgPulse 1.6s infinite;z-index:2}
+.pack-amt{font-family:var(--mono);font-size:32px;font-weight:800;color:var(--gold);position:relative;z-index:2}
+.pack-name{font-family:var(--disp);font-weight:700;font-size:16px;margin-top:4px;position:relative;z-index:2}
+.pack-price{color:var(--mut);font-size:13px;margin:6px 0 14px;position:relative;z-index:2}
+.pack-btn{position:relative;z-index:2;animation:btnPulse 2.4s ease-in-out infinite}
+@keyframes btnPulse{0%,100%{box-shadow:0 0 0 0 rgba(232,176,75,.4)}50%{box-shadow:0 0 0 10px rgba(232,176,75,0)}}
+
 /* confettis */
 .confetti-container{position:fixed;inset:0;pointer-events:none;z-index:100;overflow:hidden}
 .confetti{position:absolute;width:10px;height:10px;top:-10px;animation:confettiFall 2.5s ease-out forwards}
-@keyframes confettiFall{
-  0%{transform:translateY(0) rotate(0);opacity:1}
-  100%{transform:translateY(100vh) rotate(720deg);opacity:0}
-}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
 
 /* toasts */
 #toasts{position:fixed;right:18px;bottom:18px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:350px}
@@ -374,7 +398,7 @@ select.mini{padding:8px 10px;background:#0d151a;border:1px solid var(--line);bor
   .rail-wrap{width:70px}
   .nav-btn span.lbl{display:none}
   .tb-save,.tb-lvl{display:none}
-  /* sur petit écran : vitales flottantes compactes en bas à gauche */
   .vitals{position:fixed;left:8px;bottom:8px;width:196px;z-index:30;border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
   .float-txt{left:210px;bottom:170px}
+  .bankcard{width:100%}
 }
