@@ -1,4 +1,4 @@
-/* ═══════════ INTERFACE v6 — vitales redessinées, sans pets/amis ═══════════ */
+/* ═══════════ INTERFACE v8 — carte 3D, santé, banques joueurs, boutique animée ═══════════ */
 const UI = (() => {
   const el = id => document.getElementById(id);
 
@@ -12,8 +12,8 @@ const UI = (() => {
     immobilier:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="11" height="11"/><path d="M3 8 h11 M8 4 v11"/></svg>',
     auto:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 10 l1.5-4 h10 L15 10 v3 h-2 M2 10 h13"/><circle cx="5" cy="13" r="1.4"/><circle cx="12" cy="13" r="1.4"/></svg>',
     assurances:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8.5 2 L14 4 v4 c0 4-2.5 6-5.5 7 C5.5 14 3 12 3 8 V4 Z"/></svg>',
+    sante:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="11" height="11" rx="2"/><path d="M8.5 5.5 v6 M5.5 8.5 h6"/></svg>',
     economie:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 14 L6 9 L9 11.5 L15 4 M11 4 h4 v4"/></svg>',
-    bourse:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 13 l4 -5 l3 3 l6 -8"/><path d="M11 3 h4 v4"/></svg>',
     skills:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M8.5 5 v4 l3 2"/></svg>',
     noir:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M4 4 l9 9"/></svg>',
     plus:'<svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M8.5 5.5 v6 M5.5 8.5 h6"/></svg>',
@@ -23,20 +23,20 @@ const UI = (() => {
   const NAV = [
     ['vie','Accueil'],['inventaire','Inventaire'],['carriere','Emploi'],['marche','Courses'],
     ['entreprises','Entreprises'],['banque','Banque'],['immobilier','Immo'],['auto','Auto'],
-    ['assurances','Assurances'],['bourse','Bourse'],['skills','Compétences'],
+    ['assurances','Assurances'],['sante','Santé'],['skills','Compétences'],
     ['economie','Économie'],['noir','Noir',true],['plus','Boutique +'],['profil','Profil']
   ];
 
   const TUTO = [
-    { sel:null, t:'Bienvenue dans HEXALIFE', x:'2 000 € en liquide, un compte bancaire à ouvrir, des compétences à développer. 9 étapes pour maîtriser la ville.' },
-    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim, soif baissent en continu. Mangez et buvez depuis l\'Inventaire.' },
-    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré affiche votre solde. La carte bleue s\'anime à chaque mouvement.' },
+    { sel:null, t:'Bienvenue dans HEXALIFE', x:'2 000 € en liquide, un compte à ouvrir, des compétences à développer. 9 étapes pour maîtriser la ville.' },
+    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim, soif baissent en continu. Mangez depuis l\'Inventaire, soignez-vous dans Santé.' },
+    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré défile jusqu\'à la valeur à chaque mouvement. La carte bleue s\'anime.' },
     { sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges, net par seconde — tout vit en temps réel.' },
-    { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Temps plein exclusif ou partiel cumulable. Signez votre premier contrat.' },
+    { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Temps plein exclusif ou partiel cumulable.' },
     { sel:'[data-id="marche"]', t:'Les courses', x:'Tout part dans l\'Inventaire.' },
-    { sel:'[data-id="inventaire"]', t:'L\'inventaire', x:'Cliquez pour consommer, animation sur les jauges.' },
+    { sel:'[data-id="banque"]', t:'Votre banque', x:'Ouvrez un compte : salaires et impôts passent par là.' },
     { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Panneau complet : production, marketing, RH, améliorations.' },
-    { sel:null, t:'À vous de jouer !', x:'Défis, quêtes quotidiennes, bourse, compétences… Bonus : 100 €.' }
+    { sel:null, t:'À vous de jouer !', x:'Défis, quêtes, santé, banques de joueurs… Bonus : 100 €.' }
   ];
 
   let feedItems = [];
@@ -84,7 +84,6 @@ const UI = (() => {
     d.style.right = (44 + Math.random()*40) + 'px';
     host.appendChild(d);
     setTimeout(() => d.remove(), 1200);
-    const c = el('tbCash'); if (c) { c.style.transform = 'scale(1.06)'; setTimeout(() => c.style.transform = '', 180); }
   }
 
   function cardFx(txt, amt) {
@@ -166,27 +165,54 @@ const UI = (() => {
   }
   function tutoSkip() { G.tuto = -1; placeTuto(); toast('Tutoriel passé.', ''); save(); }
 
+  /* Carte bancaire 3D réutilisable */
+  function bankCardHTML(balance, bankName, holder, small) {
+    return '<div class="bankcard' + (small ? ' small' : '') + '"><div class="bc-shine"></div>' +
+      '<div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">HEXAPAY</span></div>' +
+      '<div class="bc-num">•••• •••• •••• 4242</div>' +
+      '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(holder) + '</div></div>' +
+      '<div style="text-align:right"><div class="bc-lbl">' + esc(bankName) + '</div><div class="bc-bal">' + eur(balance) + '</div></div></div></div>';
+  }
+
   function render() {
     updateTop();
     const R = {
       vie:rVie, inventaire:rInv, carriere:rCarriere, marche:rMarche,
       entreprises:rEntreprises, banque:rBanque, immobilier:rImmo, auto:rAuto,
-      assurances:rAssur, economie:rEco, bourse:rBourse, skills:rSkills,
-      noir:rNoir, plus:rPlus, profil:rProfil
+      assurances:rAssur, sante:rSante, skills:rSkills,
+      economie:rEco, noir:rNoir, plus:rPlus, profil:rProfil
     };
     el('view').innerHTML = (R[T.tab] || rVie)();
     if (T.tab === 'vie' || T.tab === 'economie') renderFeedZone();
     if (T.tab === 'economie') drawCharts();
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && (T.bizTab === 'overview' || T.bizTab === 'compta'))
       spark(el('bChart'), G.biz[T.selBiz].hist, 'rgb(232,176,75)');
-    if (T.tab === 'bourse') {
-      W.stocks.forEach(s => spark(el('sp_' + s.id), s.hist, 'rgb(84,163,216)'));
-      W.cryptos.forEach(c => spark(el('sp_' + c.id), c.hist, 'rgb(232,176,75)'));
-    }
+    if (T.tab === 'banque') loadPlayerBanks();
+    if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && G.biz[T.selBiz].type === 'banque') loadExtClients();
   }
   function renderFeedZone() {
     const z = el('feedZone');
     if (z) z.innerHTML = feedItems.length ? feedItems.map(f => '<div class="feed-item"><span class="tm">' + f.t + '</span>' + f.html + '</div>').join('') : '<div class="empty">Le journal est vide.</div>';
+  }
+
+  function loadPlayerBanks() {
+    const host = el('playerBanksList'); if (!host) return;
+    fetch('/api/banks').then(r => r.json()).then(j => {
+      const list = (j && j.banks) || [];
+      host.innerHTML = list.length ? list.map(b =>
+        '<div class="bank-offer" data-act="bankDetails" data-id="' + esc(b.id) + '" data-name="' + esc(b.name) + '" data-rate="' + b.livret + '" data-owner="' + esc(b.owner) + '" data-accounts="' + b.accounts + '">' +
+        '<div class="bo-name">🏦 ' + esc(b.name) + '</div><div class="bo-det">par ' + esc(b.owner) + ' · Livret ' + b.livret + ' % · ' + b.accounts + ' comptes</div></div>'
+      ).join('') : '<div class="empty">Aucune banque fondée par un joueur pour le moment.</div>';
+    }).catch(() => { host.innerHTML = '<div class="empty">Banques de joueurs indisponibles hors-ligne.</div>'; });
+  }
+  function loadExtClients() {
+    const host = el('extClients'); if (!host) return;
+    fetch('/api/banks/clients').then(r => r.json()).then(j => {
+      const list = (j && j.clients) || [];
+      host.innerHTML = list.length ? list.map(c =>
+        '<div class="rowline"><div><div class="lbl">' + esc(c.name) + '</div><div class="det">Compte : ' + eur(c.compte) + ' · Livret : ' + eur(c.livret) + '</div></div><span class="chip green">CLIENT</span></div>'
+      ).join('') : '<div class="empty">Aucun joueur externe inscrit à votre banque.</div>';
+    }).catch(() => { host.innerHTML = '<div class="empty">Clients externes indisponibles hors-ligne.</div>'; });
   }
 
   function goals() {
@@ -198,7 +224,6 @@ const UI = (() => {
     if (!G.biz.length) g.push('Fonder une entreprise');
     return g;
   }
-
   function missionRows() {
     return (G.missions.list || []).map((m,i) => {
       const pct = clamp(m.prog/m.tgt*100, 0, 100), done = m.prog >= m.tgt;
@@ -208,7 +233,6 @@ const UI = (() => {
         (m.claimed ? '<span class="chip green">RÉCLAMÉ</span>' : done ? '<button class="btn btn-primary btn-sm" data-act="claimMission" data-i="' + i + '">+' + eur(m.rew) + '</button>' : '<span class="money">' + eur(m.rew) + '</span>') + '</div>';
     }).join('') || '<div class="empty">Aucun défi.</div>';
   }
-
   function questRows() {
     return (G.quests.list || []).map((q,i) => {
       const pct = clamp(q.prog/q.tgt*100, 0, 100), done = q.prog >= q.tgt;
@@ -218,25 +242,24 @@ const UI = (() => {
         (q.claimed ? '<span class="chip green">RÉCLAMÉ</span>' : done ? '<button class="btn btn-primary btn-sm" data-act="claimQuest" data-i="' + i + '">+' + eur(q.rew) + '</button>' : '<span class="money">' + eur(q.rew) + ' +' + q.xp + ' XP</span>') + '</div>';
     }).join('') || '<div class="empty">Aucune quête.</div>';
   }
-
   function weatherChip() { const w = DATA.weather[W.weather.i]; return w.ico + ' ' + w.n; }
 
   function rVie() {
     const l = level(G.xp), cur = G.xp - 100*(l-1)*(l-1), need = 100*l*l - 100*(l-1)*(l-1);
     const bal = balance();
     const lottoCd = Math.max(0, Math.ceil(((G.lottoCd||0) - Date.now())/1000));
+    const card = G.bank.bankId ? bankCardHTML(bal, G.bank.bankName || 'Banque', G.name, true) :
+      '<div class="empty" style="padding:20px">Ouvrez un compte pour obtenir votre carte.</div>';
     return '<h1>Bonjour, ' + esc(G.name) + '.</h1>' +
-      '<div class="sub">Météo : <b>' + weatherChip() + '</b> · niveau ' + l + ' · ' + Math.round(cur/need*100) + ' % XP</div>' +
-      '<div class="grid3"><div class="kpi"><div class="k-lbl">' + (G.bank.bankId ? 'Compte bancaire' : 'Liquidités') + '</div><div class="k-val" style="color:' + (bal < 0 ? 'var(--red)' : 'var(--gold)') + '">' + eur(bal) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Niveau ' + l + '</div><div class="k-val">' + Math.round(cur/need*100) + ' %<div class="bar b-gold" style="margin:8px 0 0"><div class="fill" style="width:' + (cur/need*100) + '%"></div></div></div></div>' +
-      '<div class="kpi"><div class="k-lbl">Impôts versés</div><div class="k-val" style="color:var(--red)">' + eur(G.stats.tax) + '</div></div></div>' +
+      '<div class="sub">Météo : <b>' + weatherChip() + '</b> · niveau ' + l + ' · ' + Math.round(cur/need*100) + ' % XP' + (G.health.sick ? ' · <b style="color:var(--red)">malade</b>' : '') + '</div>' +
+      '<div class="grid2"><div>' + card + '</div>' +
+      '<div class="kpi"><div class="k-lbl">Impôts versés</div><div class="k-val" style="color:var(--red)">' + eur(G.stats.tax) + '</div>' +
+      '<div class="k-lbl" style="margin-top:12px">Niveau ' + l + '</div><div class="bar b-gold" style="margin:6px 0 0"><div class="fill" style="width:' + (cur/need*100) + '%"></div></div></div></div>' +
       '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Défis du moment</h2>' + missionRows() + '</div>' +
-      '<div class="panel"><h2>Quêtes quotidiennes</h2>' + questRows() +
-      '<div class="det" style="margin-top:8px">Se rafraîchissent toutes les 24 h.</div></div></div>' +
-      '<div class="grid2"><div class="panel"><h2>Loto citoyenne</h2><div class="rowline"><div><div class="lbl">Tenter votre chance</div><div class="det">Ticket ' + eur(DATA.lotto.cost) + ' · ' + Math.round((DATA.lotto.chance + skillBonus('luck'))*100) + ' % de gagner ' + eur0(DATA.lotto.min) + '–' + eur0(DATA.lotto.max) + '</div></div>' +
+      '<div class="panel"><h2>Quêtes quotidiennes</h2>' + questRows() + '<div class="det" style="margin-top:8px">Refresh 24 h.</div></div></div>' +
+      '<div class="grid2"><div class="panel"><h2>Loto citoyenne</h2><div class="rowline"><div><div class="lbl">Tenter votre chance</div><div class="det">' + eur(DATA.lotto.cost) + ' · ' + Math.round((DATA.lotto.chance + skillBonus('luck'))*100) + ' %</div></div>' +
       '<span class="mono" id="lottoCd"' + (lottoCd <= 0 ? ' hidden' : '') + '>' + lottoCd + ' s</span>' +
-      '<button class="btn btn-primary btn-sm" id="lottoBtn" data-act="lotto"' + (lottoCd > 0 ? ' hidden' : '') + '>Acheter</button></div>' +
-      '<div class="rowline"><div class="det">Gains : ' + (G.stats.lottoWins||0) + ' tirage(s)</div></div></div>' +
+      '<button class="btn btn-primary btn-sm" id="lottoBtn" data-act="lotto"' + (lottoCd > 0 ? ' hidden' : '') + '>Acheter</button></div></div>' +
       '<div class="panel"><h2>Objectifs</h2>' + (goals().length ? goals().map(g => '<div class="rowline"><div class="lbl">▸ ' + g + '</div></div>').join('') : '<div class="empty">Tous atteints.</div>') + '</div></div>' +
       '<div class="panel"><h2>Journal de bord</h2><div id="feedZone"></div></div>';
   }
@@ -246,7 +269,7 @@ const UI = (() => {
     if (!entries.length) return '<h1>Inventaire</h1><div class="sub">Votre sac est vide.</div>' +
       '<div class="panel" style="text-align:center;padding:40px"><div style="font-size:38px">🎒</div><p class="empty">Rien à consommer.</p>' +
       '<button class="btn btn-primary" data-act="tab" data-id="marche">Aller aux courses</button></div>';
-    return '<h1>Inventaire</h1><div class="sub">Cliquez pour consommer immédiatement.</div>' +
+    return '<h1>Inventaire</h1><div class="sub">Cliquez pour consommer. Attention : trop manger (>100) rend malade.</div>' +
       '<div class="inv-grid">' + entries.map(([id,q],k) => { const f = foodById(id);
         return '<div class="inv-card" style="animation-delay:' + (k*0.04) + 's"><span class="qty">×' + q + '</span><div style="font-size:30px">' + f.ico + '</div>' +
         '<div class="nm">' + f.n + '</div><div class="fx">' + (f.f ? 'Faim +' + f.f : '') + (f.f && f.s ? ' · ' : '') + (f.s ? 'Soif +' + f.s : '') + '</div>' +
@@ -254,19 +277,16 @@ const UI = (() => {
   }
 
   function rMarche() {
-    return '<h1>Courses</h1><div class="sub">Prix TTC, paiement débité du compte bancaire.</div><div class="panel">' +
+    return '<h1>Courses</h1><div class="sub">Prix TTC, débité du compte bancaire.</div><div class="panel">' +
       DATA.foods.map(f => '<div class="rowline"><div><div class="lbl">' + f.ico + ' ' + f.n + '</div><div class="det">' + (f.f ? 'Faim +' + f.f : '') + (f.f && f.s ? ' · ' : '') + (f.s ? 'Soif +' + f.s : '') + ' · en sac : ' + (G.inv[f.id]||0) + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:12px"><span class="money">' + eur(f.p) + '</span>' +
       '<button class="btn btn-sm btn-primary" data-act="buyFood" data-id="' + f.id + '">Acheter</button></div></div>').join('') + '</div>';
   }
 
   function rCarriere() {
-    let mine = '';
-    if (G.jobs.length) {
-      mine = G.jobs.map((j,i) => '<div class="rowline"><div><div class="lbl">' + esc(j.title) + ' — ' + esc(DATA.companies[j.c].n) + '</div>' +
-        '<div class="det">' + eur(j.h) + ' brut/h · ' + (j.mode === 'plein' ? 'temps plein' : 'temps partiel') + ' · net ≈ ' + eur(jobNetHourly(j.h, j.mode)) + '/h</div></div>' +
-        '<button class="btn btn-sm btn-danger" data-act="quitJob" data-i="' + i + '">Quitter</button></div>').join('');
-    } else mine = '<div class="empty">Aucun poste.</div>';
+    let mine = G.jobs.length ? G.jobs.map((j,i) => '<div class="rowline"><div><div class="lbl">' + esc(j.title) + ' — ' + esc(DATA.companies[j.c].n) + '</div>' +
+      '<div class="det">' + eur(j.h) + ' brut/h · ' + (j.mode === 'plein' ? 'temps plein' : 'partiel') + ' · net ≈ ' + eur(jobNetHourly(j.h, j.mode)) + '/h</div></div>' +
+      '<button class="btn btn-sm btn-danger" data-act="quitJob" data-i="' + i + '">Quitter</button></div>').join('') : '<div class="empty">Aucun poste.</div>';
     const loadPct = Math.round(totalLoad()*100);
     const secs = [''].concat([...new Set(DATA.companies.map(c => c.sec))]);
     const q = (T.jobF.q || '').toLowerCase();
@@ -286,10 +306,9 @@ const UI = (() => {
       return '<div class="rowline"><div><div class="lbl">' + f.n + '</div><div class="det">' + f.d + ' · ' + (f.cost ? eur(f.cost) : 'Gratuit') + '</div></div>' +
       (done ? '<span class="chip green">OBTENU</span>' : '<button class="btn btn-sm btn-primary" data-act="train" data-id="' + f.id + '">S\'inscrire</button>') + '</div>'; }).join('');
     return '<h1>Formation & Emploi</h1><div class="sub">Tier ' + playerTier() + ' · Plein = 1 job · Partiel = cumulable.</div>' +
-      train + 
+      train +
       '<div class="panel"><h2>Mes postes</h2><div style="display:flex;align-items:center;margin-bottom:10px"><span style="font-size:12px;color:var(--mut)">Charge</span><div class="bar b-gold"><div class="fill" style="width:' + loadPct + '%"></div></div><span class="mono" style="font-size:12px">' + loadPct + ' %</span></div>' + mine + '</div>' +
-      '<div class="panel"><h2>Offres</h2>' +
-      '<div class="job-filters"><select class="mini" data-act="jobSec">' + secs.map(s => '<option value="' + esc(s) + '"' + (T.jobF.sec === s ? ' selected' : '') + '>' + (s ? esc(s) : 'Tous secteurs') + '</option>').join('') + '</select>' +
+      '<div class="panel"><h2>Offres</h2><div class="job-filters"><select class="mini" data-act="jobSec">' + secs.map(s => '<option value="' + esc(s) + '"' + (T.jobF.sec === s ? ' selected' : '') + '>' + (s ? esc(s) : 'Tous secteurs') + '</option>').join('') + '</select>' +
       '<input type="text" data-act="jobQ" placeholder="Rechercher…" value="' + esc(T.jobF.q) + '">' +
       '<label class="chk"><input type="checkbox" data-act="jobOk"' + (T.jobF.ok ? ' checked' : '') + '> Accessibles</label></div>' +
       '<div class="job-grid">' + cards + '</div></div>' +
@@ -336,11 +355,12 @@ const UI = (() => {
             '<button class="btn btn-primary btn-sm" data-act="orderFill" data-b="' + i + '"' + ((b.stock[b.order.p]||0) < b.order.qty ? ' disabled' : '') + '>Honorer</button></div>'
           : '<div class="empty">Pas de commande.</div>') : '') +
         (b.type === 'immobilier' ? '<h3>Mandats</h3><div class="rowline"><div><div class="lbl">' + (b.mandats||0) + ' mandats</div></div><button class="btn btn-primary btn-sm" data-act="buyMandat" data-b="' + i + '">Signer (300 €)</button></div>' : '') +
-        (b.type === 'banque' ? '<h3>Taux</h3>' +
-          '<div class="rowline"><div class="lbl">Crédit</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="-0.5">−</button><span class="money">' + b.tauxCredit.toFixed(1) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="0.5">+</button></div></div>' +
-          '<div class="rowline"><div class="lbl">Dépôts</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="-0.25">−</button><span class="money">' + b.tauxLivret.toFixed(2) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="0.25">+</button></div></div>' +
+        (b.type === 'banque' ? '<h3>Pilotage</h3>' +
+          '<div class="rowline"><div class="lbl">Taux crédit</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="-0.5">−</button><span class="money">' + b.tauxCredit.toFixed(1) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tc" data-v="0.5">+</button></div></div>' +
+          '<div class="rowline"><div class="lbl">Taux livret (clients)</div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="-0.25">−</button><span class="money">' + b.tauxLivret.toFixed(2) + ' %</span><button class="btn btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="tl" data-v="0.25">+</button></div></div>' +
           '<div class="rowline"><div class="lbl">Pub</div><button class="btn btn-primary btn-sm" data-act="bankAdj" data-b="' + i + '" data-k="mkt">1 000 €</button></div>' +
-          '<div class="grid3" style="margin-top:12px"><div class="kpi"><div class="k-lbl">Comptes</div><div class="k-val">' + b.accounts + '</div></div><div class="kpi"><div class="k-lbl">Dépôts</div><div class="k-val">' + kfmt(b.deposits) + '</div></div><div class="kpi"><div class="k-lbl">Crédits</div><div class="k-val">' + kfmt(b.loans) + '</div></div></div>' : '');
+          '<div class="grid3" style="margin-top:12px"><div class="kpi"><div class="k-lbl">Comptes</div><div class="k-val">' + b.accounts + '</div></div><div class="kpi"><div class="k-lbl">Dépôts</div><div class="k-val">' + kfmt(b.deposits) + '</div></div><div class="kpi"><div class="k-lbl">Crédits</div><div class="k-val">' + kfmt(b.loans) + '</div></div></div>' +
+          '<h3>Clients joueurs inscrits à votre banque</h3><div id="extClients"><div class="empty">Chargement…</div></div>' : '');
     }
     else if (T.bizTab === 'prod') {
       if (b.type === 'boulangerie') {
@@ -350,7 +370,7 @@ const UI = (() => {
           '<h3>Production</h3>' + bt.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">Stock ' + Math.floor(b.stock[p.id]||0) + ' · vendus ' + (b.counters[p.id]||0) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="1">×1</button><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="10">×10</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('');
       } else {
         body = '<div style="margin-bottom:12px">' + (perk(b,'autoRestock') ? '<span class="chip green">Réassort auto actif</span>' : '<span class="chip">Manuel</span>') + '</div>' +
-          '<h3>Rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">' + Math.floor(b.stock[p.id]||0) + ' · vendu ' + (b.counters[p.id]||0) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="50">+50</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('');
+          '<h3>Rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + p.n + '</div><div class="det">Stock ' + Math.floor(b.stock[p.id]||0) + ' · vendu ' + (b.counters[p.id]||0) + '</div></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-sm" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="50">+50</button><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></div></div>').join('');
       }
     }
     else if (T.bizTab === 'mkt') {
@@ -381,8 +401,14 @@ const UI = (() => {
   }
 
   function rBanque() {
-    if (!G.bank.bankId) return '<h1>Ouvrir un compte bancaire</h1><div class="sub">Salaires, impôts, taxes passent par là.</div><div class="panel">' + DATA.banks.map(b => '<div class="rowline"><div><div class="lbl">' + b.n + '</div><div class="det">Livret A ' + b.lv + ' %/an</div></div><button class="btn btn-sm btn-primary" data-act="openBank" data-id="' + b.id + '">Ouvrir</button></div>').join('') + '</div>';
-    const bd = DATA.banks.find(b => b.id === G.bank.bankId);
+    if (!G.bank.bankId) {
+      return '<h1>Choisir sa banque</h1><div class="sub">Cliquez sur une banque pour voir sa description et ses informations, puis ouvrez un compte.</div>' +
+        '<div class="grid2"><div>' + DATA.banks.map(b =>
+          '<div class="bank-offer" data-act="bankDetails" data-id="' + b.id + '" data-name="' + esc(b.n) + '" data-rate="' + b.lv + '"><div class="bo-name">🏦 ' + esc(b.n) + '</div><div class="bo-det">Livret A ' + b.lv + ' %/an</div></div>').join('') + '</div>' +
+        '<div><h3 style="margin:0 0 10px">Banques fondées par les joueurs</h3><div id="playerBanksList"><div class="empty">Chargement…</div></div></div></div>';
+    }
+    const bd = isPlayerBank(G.bank.bankId) ? null : DATA.banks.find(b => b.id === G.bank.bankId);
+    const bankName = G.bank.bankName || (bd ? bd.n : 'Banque');
     const loans = G.bank.loans.map((L,i) => '<div class="rowline"><div><div class="lbl">' + L.n + '</div><div class="det">' + eur(L.reste) + ' · ' + eur(L.mens) + '/mois</div></div><button class="btn btn-sm" data-act="loanRepay" data-i="' + i + '">Solder</button></div>').join('') || '<div class="empty">Aucun crédit.</div>';
     const prelev = [];
     if (G.rental) prelev.push(['Loyer', G.rental.loyer]);
@@ -391,16 +417,30 @@ const UI = (() => {
     G.bank.loans.forEach(L => prelev.push(['Crédit ' + L.n, L.mens]));
     const emp = G.biz.reduce((a,b) => a + b.emps.length, 0);
     if (emp) prelev.push(['URSSAF', emp*45]);
-    const jrn = (G.journal || []).slice(0, 18).map(j => '<tr><td class="mono" style="color:var(--dim)">' + new Date(j.t).toLocaleTimeString('fr-FR') + '</td><td>' + esc(j.label) + '</td><td class="money ' + (j.amt < 0 ? 'neg' : '') + '">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</td></tr>').join('') || '<tr><td colspan="3" class="empty">Aucune opération.</td></tr>';
-    return '<h1>Banque — ' + esc(bd.n) + '</h1><div class="sub">Animations de carte à chaque mouvement.</div>' +
-      '<div class="grid3"><div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val" style="color:' + (G.bank.compte < 0 ? 'var(--red)' : 'var(--gold)') + '">' + eur(G.bank.compte) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Livret A (' + bd.lv + ' %)</div><div class="k-val">' + eur(G.bank.livret) + ' <span style="font-size:11px;color:var(--dim)">/ 22 950 €</span></div></div>' +
+    const jrn = (G.journal || []).slice(0, 14).map(j => '<tr><td class="mono" style="color:var(--dim)">' + new Date(j.t).toLocaleTimeString('fr-FR') + '</td><td>' + esc(j.label) + '</td><td class="money ' + (j.amt < 0 ? 'neg' : '') + '">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</td></tr>').join('') || '<tr><td colspan="3" class="empty">Aucune opération.</td></tr>';
+    return '<h1>Banque — ' + esc(bankName) + '</h1><div class="sub">Votre carte, vos mouvements, votre épargne.</div>' +
+      '<div class="grid2"><div>' + bankCardHTML(G.bank.compte, bankName, G.name, false) + '</div>' +
+      '<div><div class="grid2" style="gap:12px"><div class="kpi"><div class="k-lbl">Livret A (' + bankRate() + ' %)</div><div class="k-val">' + eur(G.bank.livret) + '</div></div>' +
       '<div class="kpi"><div class="k-lbl">Liquide</div><div class="k-val">' + eur(G.cash) + '</div></div></div>' +
+      '<div style="margin-top:12px"><button class="btn btn-danger btn-sm" data-act="leaveBank">Se désinscrire / clôturer</button></div></div></div>' +
       '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Mouvements</h2><input type="number" class="mini" id="bankAmt" placeholder="Montant €" min="1">' +
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn" data-act="deposit">Liquide → compte</button><button class="btn" data-act="withdraw">Compte → liquide</button><button class="btn btn-primary" data-act="toLivret">Compte → Livret A</button><button class="btn btn-primary" data-act="fromLivret">Livret A → compte</button></div>' +
       '<h3>Prélèvements mensuels</h3>' + (prelev.length ? prelev.map(([l,m]) => '<div class="rowline"><div class="lbl">' + l + '</div><span class="money neg">−' + eur(m) + '</span></div>').join('') : '<div class="empty">Aucun.</div>') + '</div>' +
       '<div class="panel"><h2>Crédits</h2><input type="number" class="mini" id="loanAmt" placeholder="Montant €" min="1000"><div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' + DATA.loans.map(l => '<button class="btn btn-sm" data-act="loanTake" data-t="' + l.id + '">' + l.n + ' (' + l.rate + ' %)</button>').join('') + '</div><h3>En cours</h3>' + loans + '</div></div>' +
       '<div class="panel"><h2>Relevé</h2><table class="t"><tr><th>Heure</th><th>Libellé</th><th>Montant</th></tr>' + jrn + '</table></div>';
+  }
+
+  function bankDetails(d) {
+    const isP = isPlayerBank(d.id);
+    const pnj = isP ? null : DATA.banks.find(b => b.id === d.id);
+    const desc = isP ? ('Banque privée fondée par le joueur ' + d.owner + '. Elle accueille les comptes des autres citoyens.') : (pnj ? pnj.desc : '');
+    UI.modal('<h2>' + esc(d.name) + '</h2><div class="m-sub">' + (isP ? 'Banque de joueur' : 'Banque partenaire') + '</div>' +
+      '<p style="color:var(--mut);font-size:13px;line-height:1.5;margin-bottom:14px">' + esc(desc) + '</p>' +
+      '<table class="t"><tr><td>Livret A</td><td class="mono">' + d.rate + ' %/an</td></tr>' +
+      (isP ? '<tr><td>Fondateur</td><td>' + esc(d.owner) + '</td></tr><tr><td>Comptes clients</td><td>' + d.accounts + '</td></tr>' : '<tr><td>Type</td><td>Réseau national</td></tr>') +
+      '</table>' +
+      '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Fermer</button>' +
+      '<button class="btn btn-primary" data-act="openBank" data-id="' + esc(d.id) + '" data-name="' + esc(d.name) + '" data-rate="' + d.rate + '">Ouvrir un compte ici</button></div>');
   }
 
   function rImmo() {
@@ -420,10 +460,27 @@ const UI = (() => {
   }
 
   function rAssur() {
-    return '<h1>Assurances</h1><div class="sub">Prélèvement mensuel.</div><div class="panel">' +
+    return '<h1>Assurances</h1><div class="sub">Remboursent vos frais de santé et sinistres.</div><div class="panel">' +
       DATA.insurers.map(a => { const on = G.insurances.includes(a.id);
         return '<div class="rowline"><div><div class="lbl">' + a.n + '</div><div class="det">' + a.d + '</div></div><div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(a.m) + '/mois</span><button class="btn btn-sm ' + (on ? 'btn-danger' : 'btn-primary') + '" data-act="insure" data-id="' + a.id + '">' + (on ? 'Résilier' : 'Souscrire') + '</button></div></div>'; }).join('') + '</div>' +
       '<div class="panel"><h2>Couverture</h2><div class="sub" style="margin:0"><b style="color:var(--green)">' + Math.round(cov()*100) + ' %</b></div></div>';
+  }
+
+  function rSante() {
+    const doc = G.health.doctor ? DATA.doctors.find(x => x.id === G.health.doctor) : null;
+    return '<h1>Santé</h1><div class="sub">Médecin traitant, vaccins et rendez-vous. Trop manger (>100) peut vous rendre malade.</div>' +
+      '<div class="grid2"><div class="panel"><h2>État</h2>' +
+      '<div class="rowline"><div class="lbl">Santé</div><span class="mono">' + Math.round(G.vitals.sante) + '/100</span></div>' +
+      '<div class="rowline"><div class="lbl">Faim</div><span class="mono' + (G.vitals.faim > 100 ? ' neg' : '') + '">' + Math.round(G.vitals.faim) + '/200' + (G.vitals.faim > 100 ? ' (trop plein)' : '') + '</span></div>' +
+      '<div class="rowline"><div class="lbl">Malade</div>' + (G.health.sick ? '<span class="chip red">OUI</span>' : '<span class="chip green">NON</span>') + '</div>' +
+      (G.health.sick ? '<div style="margin-top:12px"><button class="btn btn-primary btn-block" data-act="bookAppointment">🩺 Prendre rendez-vous' + (doc ? ' (' + eur(doc.fee*(1-cov())) + ' après remboursement)' : '') + '</button></div>' : '') +
+      '</div>' +
+      '<div class="panel"><h2>Médecin traitant</h2>' + DATA.doctors.map(dd =>
+        '<div class="rowline"><div><div class="lbl">' + dd.n + '</div><div class="det">' + dd.spec + ' · ' + eur(dd.fee) + '/consultation</div></div>' +
+        (G.health.doctor === dd.id ? '<span class="chip green">CHOISI</span>' : '<button class="btn btn-sm" data-act="chooseDoctor" data-id="' + dd.id + '">Choisir</button>') + '</div>').join('') + '</div></div>' +
+      '<div class="panel"><h2>Vaccins</h2>' + DATA.vaccines.map(v => { const on = G.health.vaccines.includes(v.id);
+        return '<div class="rowline"><div><div class="lbl">💉 ' + v.n + '</div><div class="det">' + v.d + '</div></div>' +
+        (on ? '<span class="chip green">VACCINÉ</span>' : '<div style="display:flex;gap:10px;align-items:center"><span class="money">' + eur(v.cost) + '</span><button class="btn btn-sm btn-primary" data-act="buyVaccine" data-id="' + v.id + '">Se vacciner</button></div>') + '</div>'; }).join('') + '</div>';
   }
 
   function rEco() {
@@ -437,34 +494,15 @@ const UI = (() => {
       '<div class="panel"><h2>Journal</h2><div id="feedZone"></div></div></div>';
   }
 
-  function rBourse() {
-    const stockVal = Object.entries(G.portfolio.stocks).reduce((sum, [id, qty]) => { const s = W.stocks.find(x => x.id === id); return sum + (s ? s.price * qty : 0); }, 0);
-    const cryptoVal = Object.entries(G.portfolio.cryptos).reduce((sum, [id, qty]) => { const c = W.cryptos.find(x => x.id === id); return sum + (c ? c.price * qty : 0); }, 0);
-    return '<h1>Bourse & Crypto</h1><div class="sub">Prix en temps réel · dividendes versés chaque minute.</div>' +
-      '<div class="grid3"><div class="kpi"><div class="k-lbl">Portefeuille actions</div><div class="k-val" style="color:var(--gold)">' + eur(stockVal) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Portefeuille crypto</div><div class="k-val" style="color:var(--gold)">' + eur(cryptoVal) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Total investi</div><div class="k-val">' + eur(stockVal + cryptoVal) + '</div></div></div>' +
-      '<div class="panel"><h2>Actions</h2><input type="number" class="mini" id="stockQty" placeholder="Quantité" value="1" min="1" style="margin-bottom:12px"><div class="grid2">' +
-      W.stocks.map(s => '<div class="panel" style="margin:0;padding:14px"><div class="rowline" style="padding:0"><div><div class="lbl">' + s.n + '</div><div class="det">Possédé : ' + (G.portfolio.stocks[s.id]||0) + '</div></div><span class="money">' + eur(s.price) + '</span></div>' +
-      '<canvas class="chart" id="sp_' + s.id + '" style="height:80px;margin:10px 0"></canvas>' +
-      '<div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-act="buyStock" data-id="' + s.id + '">Acheter</button><button class="btn btn-sm" data-act="sellStock" data-id="' + s.id + '">Vendre</button></div></div>').join('') + '</div></div>' +
-      '<div class="panel"><h2>Cryptomonnaies</h2><input type="number" class="mini" id="cryptoQty" placeholder="Quantité (ex: 0.05)" value="0.01" step="0.01" min="0.001" style="margin-bottom:12px"><div class="grid2">' +
-      W.cryptos.map(c => '<div class="panel" style="margin:0;padding:14px"><div class="rowline" style="padding:0"><div><div class="lbl">' + c.n + '</div><div class="det">Possédé : ' + ((G.portfolio.cryptos[c.id]||0).toFixed(4)) + '</div></div><span class="money">' + eur(c.price) + '</span></div>' +
-      '<canvas class="chart" id="sp_' + c.id + '" style="height:80px;margin:10px 0"></canvas>' +
-      '<div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-act="buyCrypto" data-id="' + c.id + '">Acheter</button><button class="btn btn-sm" data-act="sellCrypto" data-id="' + c.id + '">Vendre</button></div></div>').join('') + '</div></div>';
-  }
-
   function rSkills() {
-    return '<h1>Compétences</h1><div class="sub">Bonus permanents sur votre progression. Plus le niveau monte, plus le coût augmente.</div>' +
-      '<div class="grid2">' + DATA.skills.map(s => {
-        const lvl = skillLvl(s.id), maxed = lvl >= s.maxLvl;
-        const cost = maxed ? 0 : Math.round(s.costBase * Math.pow(s.costGrow, lvl));
-        return '<div class="skill-card"><div class="sk-head"><div class="sk-icon">' + s.icon + '</div><div style="flex:1"><div class="sk-name">' + s.n + '</div><div class="sk-desc">' + s.d + '</div></div></div>' +
+    return '<h1>Compétences</h1><div class="sub">Bonus permanents.</div><div class="grid2">' + DATA.skills.map(s => {
+      const lvl = skillLvl(s.id), maxed = lvl >= s.maxLvl;
+      const cost = maxed ? 0 : Math.round(s.costBase * Math.pow(s.costGrow, lvl));
+      return '<div class="skill-card"><div class="sk-head"><div class="sk-icon">' + s.icon + '</div><div style="flex:1"><div class="sk-name">' + s.n + '</div><div class="sk-desc">' + s.d + '</div></div></div>' +
         '<div class="sk-level"><span class="chip gold">Niv. ' + lvl + ' / ' + s.maxLvl + '</span></div>' +
         '<div class="sk-bar"><div class="bar b-gold"><div class="fill" style="width:' + (lvl/s.maxLvl*100) + '%"></div></div></div>' +
-        (maxed ? '<span class="chip green">MAX</span>' : '<button class="btn btn-primary btn-block" data-act="buySkill" data-id="' + s.id + '">Améliorer · ' + eur(cost) + '</button>') +
-        '</div>';
-      }).join('') + '</div>';
+        (maxed ? '<span class="chip green">MAX</span>' : '<button class="btn btn-primary btn-block" data-act="buySkill" data-id="' + s.id + '">Améliorer · ' + eur(cost) + '</button>') + '</div>';
+    }).join('') + '</div>';
   }
 
   function rNoir() {
@@ -478,19 +516,20 @@ const UI = (() => {
   function rPlus() {
     const pending = G.pendingPack ? DATA.packs.find(p => p.id === G.pendingPack) : null;
     return '<h1>Boutique +</h1><div class="sub">Paiements Stripe sécurisés (mode test).</div>' +
-      (pending ? '<div class="panel" style="border-color:var(--gold);background:rgba(232,176,75,.08)"><h2>Paiement en attente</h2><p style="color:var(--mut);margin-bottom:14px">Vous avez payé le pack « ' + pending.n + ' » (' + pending.price + ') via Stripe ?</p>' +
+      (pending ? '<div class="panel" style="border-color:var(--gold);background:rgba(232,176,75,.08)"><h2>Paiement en attente</h2><p style="color:var(--mut);margin-bottom:14px">Pack « ' + pending.n + ' » (' + pending.price + ') payé via Stripe ?</p>' +
         '<div style="display:flex;gap:10px"><button class="btn btn-primary" data-act="confirmPack">Oui, j\'ai payé</button><button class="btn btn-ghost" data-act="cancelPack">Annuler</button></div></div>' : '') +
-      '<div class="grid3">' + DATA.packs.map(p => '<div class="panel" style="text-align:center;position:relative">' + (p.best ? '<span class="chip gold" style="position:absolute;top:-9px;left:50%;transform:translateX(-50%)">MEILLEURE OFFRE</span>' : '') + '<h2 style="margin-top:6px">' + p.n + '</h2><div style="font-family:var(--mono);font-size:30px;font-weight:700;color:var(--gold);margin:12px 0">' + eur0(p.amount) + '</div><div style="color:var(--mut);margin-bottom:16px">' + p.price + '</div><button class="btn btn-primary btn-block" data-act="buyPack" data-id="' + p.id + '">Acheter via Stripe</button></div>').join('') + '</div>';
+      '<div class="pack-grid">' + DATA.packs.map((p,k) =>
+        '<div class="pack-card" style="animation-delay:' + (k*0.08) + 's">' + (p.best ? '<span class="pack-best">MEILLEURE OFFRE</span>' : '') +
+        '<div class="pack-glow"></div><div class="pack-amt">' + eur0(p.amount) + '</div><div class="pack-name">' + p.n + '</div>' +
+        '<div class="pack-price">' + p.price + '</div><button class="btn btn-primary pack-btn" data-act="buyPack" data-id="' + p.id + '">Acheter via Stripe</button></div>').join('') + '</div>';
   }
 
   function rProfil() {
     const age = Math.floor((Date.now() - G.created)/60000);
     return '<h1>Profil</h1><div class="sub">' + age + ' minute(s) · ' + esc(DB.label()) + '</div>' +
       '<div class="grid2"><div class="panel"><h2>Stats</h2><table class="t"><tr><td>Revenus</td><td class="money">' + eur(G.stats.earned) + '</td></tr><tr><td>Impôts</td><td class="money neg">' + eur(G.stats.tax) + '</td></tr><tr><td>Ventes</td><td>' + G.stats.sales + '</td></tr><tr><td>XP</td><td>' + G.xp + '</td></tr><tr><td>Postes</td><td>' + G.jobs.length + ' (' + Math.round(totalLoad()*100) + ' %)</td></tr><tr><td>Entreprises</td><td>' + G.biz.length + '</td></tr><tr><td>Immo</td><td>' + G.houses.length + '</td></tr><tr><td>Compétences</td><td>' + Object.values(G.skills).reduce((a,v)=>a+v,0) + '</td></tr></table></div>' +
-      '<div class="panel"><h2>Compte</h2><div class="rowline"><div class="lbl">Pseudo</div><div>' + esc(G.name) + '</div></div><div class="rowline"><div class="lbl">Succès</div><div>' + G.ach.length + '/' + DATA.ach.length + '</div></div><div style="margin-top:16px;display:flex;gap:10px"><button class="btn btn-ghost" data-act="logout">Déconnexion</button><button class="btn btn-danger" data-act="resetSave">Reset</button></div></div></div>' +
-      '<div class="panel"><h2>Succès (' + G.ach.length + '/' + DATA.ach.length + ')</h2><div class="ach-grid">' +
-      DATA.ach.map(a => { const on = G.ach.includes(a.id);
-        return '<div class="ach ' + (on ? 'on' : 'off') + '"><div class="a-i">' + a.i + '</div><div class="a-n">' + a.n + '</div><div class="a-d">' + a.d + ' +' + a.xp + ' XP</div></div>'; }).join('') + '</div></div>';
+      '<div class="panel"><h2>Compte</h2><div class="rowline"><div class="lbl">Pseudo</div><div>' + esc(G.name) + '</div></div>' +
+      '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost" data-act="logout">Déconnexion</button><button class="btn btn-danger" data-act="resetSave">Réinitialiser la vie</button><button class="btn btn-danger" data-act="deleteAccount">Supprimer mon compte</button></div></div></div>';
   }
 
   function spark(cv, data, color) {
@@ -518,7 +557,7 @@ const UI = (() => {
 
   function tickUI() {
     const bal = balance();
-    T.cashDisp += (bal - T.cashDisp)*0.18;
+    T.cashDisp += (bal - T.cashDisp)*0.12;
     if (Math.abs(T.cashDisp - bal) < 0.01) T.cashDisp = bal;
     const c = el('tbCash');
     c.textContent = eur(T.cashDisp);
@@ -526,11 +565,13 @@ const UI = (() => {
     el('tbCashLbl').textContent = G.bank.bankId ? 'compte' : 'liquide';
     const v = G.vitals;
     el('barSante').style.width = v.sante + '%'; el('numSante').textContent = Math.round(v.sante);
-    el('barFaim').style.width = v.faim + '%'; el('numFaim').textContent = Math.round(v.faim);
+    el('barFaim').style.width = clamp(v.faim,0,100) + '%'; el('numFaim').textContent = Math.round(v.faim);
     el('barSoif').style.width = v.soif + '%'; el('numSoif').textContent = Math.round(v.soif);
     const st = el('vStatus');
     if (bal < 0) { st.textContent = '⚠ Découvert'; st.className = 'v-status bad'; }
+    else if (G.health.sick) { st.textContent = '🤢 Malade — consultez'; st.className = 'v-status bad'; }
     else if (!hasShelter()) { st.textContent = '⚠ Sans domicile'; st.className = 'v-status bad'; }
+    else if (v.faim > 100) { st.textContent = '⚠ Trop plein'; st.className = 'v-status warn'; }
     else if (v.faim < 20 || v.soif < 20) { st.textContent = '⚠ Manger / boire'; st.className = 'v-status warn'; }
     else { st.textContent = 'Citoyen en bonne santé'; st.className = 'v-status'; }
     const inf = G.tickInfo || { rev:0, chg:0, tax:0 };
@@ -579,5 +620,5 @@ const UI = (() => {
     if (t.dataset.act === 'jobQ') { clearTimeout(T.qT); T.qT = setTimeout(() => { T.jobF.q = t.value; UI.render(); const inp = document.querySelector('[data-act="jobQ"]'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }, 300); }
   });
 
-  return { toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto };
+  return { toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails };
 })();
