@@ -1,4 +1,4 @@
-/* ═══════════ INTERFACE v9 — render silencieux, présence live, clients riches ═══════════ */
+/* ═══════════ INTERFACE v10 — transferts, annonces, admin, animations ═══════════ */
 const UI = (() => {
   const el = id => document.getElementById(id);
 
@@ -34,13 +34,15 @@ const UI = (() => {
     { sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges, net par seconde — tout vit en temps réel.' },
     { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Temps plein exclusif ou partiel cumulable.' },
     { sel:'[data-id="marche"]', t:'Les courses', x:'Tout part dans l’Inventaire.' },
-    { sel:'[data-id="banque"]', t:'Votre banque', x:'Ouvrez un compte : salaires et impôts passent par là.' },
-    { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Panneau complet : production, marketing, RH, améliorations.' },
-    { sel:null, t:'À vous de jouer !', x:'Défis, quêtes, santé, banques de joueurs… Bonus : 100 €.' }
+    { sel:'[data-id="banque"]', t:'Votre banque', x:'Ouvrez un compte : salaires, impôts et transferts passent par là.' },
+    { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Panneau complet + annonces publiques à tous les joueurs.' },
+    { sel:null, t:'À vous de jouer !', x:'Défis, quêtes, santé, transferts, annonces… Bonus : 100 €.' }
   ];
 
   let feedItems = [];
   let presenceStarted = false;
+  let seenAnnounces = [];
+  try { seenAnnounces = JSON.parse(localStorage.getItem('hl_seenAnn') || '[]'); } catch (e) { seenAnnounces = []; }
 
   function toast(msg, type = '') {
     const t = document.createElement('div');
@@ -76,6 +78,40 @@ const UI = (() => {
     setTimeout(() => container.remove(), 2500);
   }
 
+  /* Billets qui volent (envoi) */
+  function moneyFly() {
+    const host = document.createElement('div');
+    host.className = 'moneyfly';
+    for (let i = 0; i < 14; i++) {
+      const b = document.createElement('div');
+      b.className = 'mf-bill';
+      b.textContent = '€';
+      b.style.left = (40 + Math.random()*20) + '%';
+      b.style.top = '60%';
+      b.style.animationDelay = (Math.random()*0.4) + 's';
+      b.style.setProperty('--dx', (Math.random()*240 - 120) + 'px');
+      host.appendChild(b);
+    }
+    document.body.appendChild(host);
+    setTimeout(() => host.remove(), 2000);
+  }
+  /* Pluie de billets dorés (réception) */
+  function moneyRain() {
+    const host = document.createElement('div');
+    host.className = 'moneyrain';
+    for (let i = 0; i < 30; i++) {
+      const b = document.createElement('div');
+      b.className = 'mr-bill';
+      b.textContent = '€';
+      b.style.left = Math.random()*100 + '%';
+      b.style.animationDelay = (Math.random()*0.8) + 's';
+      b.style.fontSize = (14 + Math.random()*16) + 'px';
+      host.appendChild(b);
+    }
+    document.body.appendChild(host);
+    setTimeout(() => host.remove(), 2600);
+  }
+
   function moneyFx(amt) {
     const host = el('tbMoney'); if (!host) return;
     while (host.querySelectorAll('.money-fx').length > 5) host.querySelector('.money-fx').remove();
@@ -90,14 +126,30 @@ const UI = (() => {
   function cardFx(txt, amt) {
     const d = document.createElement('div');
     d.className = 'cardfx';
-    d.innerHTML = '<div class="cardfx-card">' +
-      '<div class="cf-holo"></div>' +
-      '<div class="cf-top"><div class="cf-chip"></div><span class="cf-brand">HEXAPAY</span></div>' +
-      '<div class="cf-num">•••• •••• •••• 4242</div>' +
-      '<div class="cf-bottom"><div class="cf-txt">' + esc(txt) + '</div><div class="cf-amt">' + esc(amt || '') + '</div></div>' +
-      '</div>';
+    d.innerHTML = '<div class="cardfx-card"><div class="cf-holo"></div><div class="cf-top"><div class="cf-chip"></div><span class="cf-brand">HEXAPAY</span></div><div class="cf-num">•••• •••• •••• 4242</div><div class="cf-bottom"><div class="cf-txt">' + esc(txt) + '</div><div class="cf-amt">' + esc(amt || '') + '</div></div></div>';
     document.body.appendChild(d);
     setTimeout(() => d.remove(), 1800);
+  }
+
+  /* Popup annonce plein écran ultra-stylé */
+  function showAnnounce(a) {
+    const ov = document.createElement('div');
+    ov.className = 'ann-ov';
+    ov.innerHTML =
+      '<div class="ann-glow"></div>' +
+      '<div class="ann-card">' +
+        '<div class="ann-ring"></div>' +
+        '<div class="ann-mega">📣</div>' +
+        '<div class="ann-biz">' + esc(a.biz) + '</div>' +
+        '<div class="ann-text">' + esc(a.text) + '</div>' +
+        '<div class="ann-by">par ' + esc(a.owner) + '</div>' +
+        '<button class="btn btn-primary ann-close">Fermer</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+    confetti();
+    const close = () => { ov.classList.add('out'); setTimeout(() => ov.remove(), 400); };
+    ov.querySelector('.ann-close').addEventListener('click', close);
+    setTimeout(close, 9000);
   }
 
   function modal(html) {
@@ -111,7 +163,6 @@ const UI = (() => {
     setTimeout(() => s.textContent = 'Sauvegarde auto active', 1500);
   }
 
-  /* ── Badge joueurs en ligne (injecté à côté du niveau) ── */
   function ensureOnlineBadge() {
     if (el('tbOnline')) return;
     const lvl = document.querySelector('.tb-lvl');
@@ -128,16 +179,43 @@ const UI = (() => {
       if (j && typeof j.count === 'number') {
         if (n) n.textContent = j.count;
         const dot = document.querySelector('.on-dot'); if (dot) dot.classList.add('live');
+        T.isAdmin = !!j.isAdmin;
       } else if (n) n.textContent = '0';
     } catch (e) {
       const n = el('tbOnlineN'); if (n) n.textContent = '0';
     }
   }
+  async function pollMailbox() {
+    try {
+      const j = await DB.authFetch('/api/mailbox');
+      const ops = (j && j.ops) || [];
+      if (ops.length) {
+        ops.forEach(op => applyOp(op));
+        await DB.authFetch('/api/mailbox/ack', { method: 'POST', body: JSON.stringify({ ids: ops.map(o => o.id) }) });
+        UI.render(true);
+      }
+    } catch (e) {}
+  }
+  async function pollAnnounce() {
+    try {
+      const j = await DB.authFetch('/api/announce');
+      const list = (j && j.list) || [];
+      list.forEach(a => {
+        if (!seenAnnounces.includes(a.id)) {
+          seenAnnounces.push(a.id);
+          localStorage.setItem('hl_seenAnn', JSON.stringify(seenAnnounces.slice(-60)));
+          showAnnounce(a);
+        }
+      });
+    } catch (e) {}
+  }
   function startPresence() {
     if (presenceStarted) return;
     presenceStarted = true;
-    pingNow();
+    pingNow(); pollMailbox(); pollAnnounce();
     setInterval(pingNow, 20000);
+    setInterval(pollMailbox, 8000);
+    setInterval(pollAnnounce, 12000);
   }
 
   function buildRail() {
@@ -203,11 +281,11 @@ const UI = (() => {
       '<div style="text-align:right"><div class="bc-lbl">' + esc(bankName) + '</div><div class="bc-bal">' + eur(balance) + '</div></div></div></div>';
   }
 
-  /* ── RENDER : silent = pas d'anim, scroll + inputs préservés ── */
   function render(silent) {
     updateTop();
     ensureOnlineBadge();
     startPresence();
+    if (!T.cashInit) { T.cashDisp = balance(); T.cashInit = true; }
     const v = el('view');
     const st = v.scrollTop;
     const savedInputs = {};
@@ -257,12 +335,86 @@ const UI = (() => {
         '<div class="rowline"><div style="flex:1"><div class="lbl">' + esc(c.name) + (c.online ? ' <span class="chip green">EN LIGNE</span>' : '') + '</div>' +
         '<div class="det">Compte : <span class="money">' + eur(c.compte) + '</span> · Livret : <span class="money">' + eur(c.livret) + '</span></div>' +
         '<div class="det">' + c.jobs + ' job(s) · ' + c.biz + ' entreprise(s)</div>' +
-        (c.loans && c.loans.length
-          ? '<div class="det">Prêts : ' + c.loans.map(L => esc(L.n) + ' (reste ' + eur(L.reste) + ', ' + eur(L.mens) + '/mois)').join(' · ') + '</div>'
-          : '<div class="det">Aucun prêt en cours</div>') +
+        (c.loans && c.loans.length ? '<div class="det">Prêts : ' + c.loans.map(L => esc(L.n) + ' (reste ' + eur(L.reste) + ')').join(' · ') + '</div>' : '<div class="det">Aucun prêt</div>') +
         '</div><span class="chip gold">CLIENT</span></div>'
-      ).join('') : '<div class="empty">Aucun joueur externe inscrit à votre banque pour le moment.</div>';
+      ).join('') : '<div class="empty">Aucun joueur externe inscrit à votre banque.</div>';
     }).catch(() => { host.innerHTML = '<div class="empty">Clients externes indisponibles hors-ligne.</div>'; });
+  }
+
+  /* ── Modale envoi d'argent ── */
+  function openSendMoney() {
+    if (!G.bank.bankId) return toast('Ouvrez d’abord un compte bancaire.', 'warn');
+    modal('<h2>💸 Envoyer de l’argent</h2><div class="m-sub">Transfert instantané entre joueurs.</div>' +
+      '<label style="font-size:12.5px;color:var(--mut)">Pseudo du destinataire<input id="smTo" class="mini" style="width:100%;margin-top:6px" maxlength="20" placeholder="Pseudo"></label>' +
+      '<label style="font-size:12.5px;color:var(--mut);margin-top:12px;display:block">Montant (€)<input id="smAmt" class="mini" style="width:100%;margin-top:6px" type="number" min="1" placeholder="100"></label>' +
+      '<div id="smOnline" style="margin-top:12px"><div class="det">Joueurs en ligne :</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span class="det">chargement…</span></div></div>' +
+      '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Annuler</button>' +
+      '<button class="btn btn-primary" data-act="doSendMoney">Envoyer</button></div>');
+    DB.authFetch('/api/presence').then(j => {
+      const host = el('smOnline'); if (!host) return;
+      const names = ((j && j.names) || []).filter(n => n !== G.name);
+      host.innerHTML = '<div class="det">Joueurs en ligne :</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+        (names.length ? names.map(n => '<button class="chip gold sm-chip" data-name="' + esc(n) + '" style="cursor:pointer">' + esc(n) + '</button>').join('') : '<span class="det">aucun autre joueur en ligne</span>') + '</div>';
+      host.querySelectorAll('.sm-chip').forEach(b => b.addEventListener('click', () => { const i = el('smTo'); if (i) i.value = b.dataset.name; }));
+    }).catch(() => {});
+  }
+  function doSendMoney() {
+    const to = ((el('smTo') || {}).value || '').trim();
+    const amount = Math.floor(+((el('smAmt') || {}).value || 0));
+    if (!to) return toast('Entrez un pseudo.', 'warn');
+    if (!(amount > 0)) return toast('Montant invalide.', 'warn');
+    DB.authFetch('/api/transfer', { method: 'POST', body: JSON.stringify({ to, amount }) }).then(j => {
+      if (j && j.ok) { moneyFly(); toast('💸 Envoi de ' + eur(amount) + ' à ' + to + '…', 'good'); closeModal(); }
+      else toast((j && j.err) || 'Échec du transfert.', 'bad');
+    }).catch(() => toast('Transfert indisponible hors-ligne.', 'bad'));
+  }
+
+  /* ── Modale annonce ── */
+  function openAnnounce() {
+    if (!G.biz.length) return toast('Il faut posséder une entreprise.', 'warn');
+    modal('<h2>📣 Annonce publique</h2><div class="m-sub">Visible par TOUS les joueurs en popup. Une seule par heure.</div>' +
+      '<label style="font-size:12.5px;color:var(--mut)">Message (200 car. max)<textarea id="anText" class="mini" style="width:100%;height:90px;margin-top:6px;resize:none" maxlength="200" placeholder="Votre message promotionnel…"></textarea></label>' +
+      '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Annuler</button>' +
+      '<button class="btn btn-primary" data-act="doAnnounce">Diffuser</button></div>');
+  }
+  function doAnnounce() {
+    const text = ((el('anText') || {}).value || '').trim();
+    if (!text) return toast('Message vide.', 'warn');
+    DB.authFetch('/api/announce', { method: 'POST', body: JSON.stringify({ text }) }).then(j => {
+      if (j && j.ok) { toast('📣 Annonce diffusée à tous les joueurs !', 'good'); closeModal(); confetti(); }
+      else toast((j && j.err) || 'Échec de l’annonce.', 'bad');
+    }).catch(() => toast('Annonce indisponible hors-ligne.', 'bad'));
+  }
+
+  /* ── Panneau Admin ── */
+  function openAdmin() {
+    DB.authFetch('/api/admin/users').then(j => {
+      const users = (j && j.users) || [];
+      modal('<h2>🛡 Panneau Administrateur</h2><div class="m-sub">Montant utilisé par les actions + / − : <input id="adAmt" class="mini" type="number" min="1" value="1000" style="width:110px"></div>' +
+        '<div style="max-height:50vh;overflow-y:auto">' +
+        users.map(u =>
+          '<div class="admin-row"><div class="admin-id"><div class="lbl">' + esc(u.name) + (u.online ? ' <span class="chip green">EN LIGNE</span>' : '') + '</div>' +
+          '<div class="det">Solde : <span class="money">' + eur(u.balance) + '</span> · ' + u.biz + ' entreprise(s)</div></div>' +
+          '<div class="admin-acts">' +
+          '<button class="btn btn-sm" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="addMoney">+€</button>' +
+          '<button class="btn btn-sm" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="removeMoney">−€</button>' +
+          '<button class="btn btn-sm" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="boost">⚡</button>' +
+          '<button class="btn btn-sm" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="malus">🐌</button>' +
+          '<button class="btn btn-sm btn-danger" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="deleteBiz">🏚</button>' +
+          '<button class="btn btn-sm btn-danger" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="reset">♻</button>' +
+          '<button class="btn btn-sm btn-danger" data-act="adminDo" data-target="' + esc(u.name) + '" data-action="deleteAccount">✖</button>' +
+          '</div></div>'
+        ).join('') + '</div>' +
+        '<div class="det" style="margin-top:10px">⚡ boost ×1,5 (5 min) · 🐌 malus ×0,5 (5 min) · 🏚 suppr. entreprises · ♻ reset progression · ✖ suppr. compte</div>' +
+        '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Fermer</button></div>');
+    }).catch(() => toast('Panneau admin indisponible.', 'bad'));
+  }
+  function adminDo(d) {
+    const amount = Math.floor(+((el('adAmt') || {}).value || 0));
+    DB.authFetch('/api/admin/action', { method: 'POST', body: JSON.stringify({ target: d.target, action: d.action, amount }) }).then(j => {
+      if (j && j.ok) { toast('Action appliquée à ' + d.target, 'good'); openAdmin(); }
+      else toast((j && j.err) || 'Action refusée.', 'bad');
+    }).catch(() => toast('Action indisponible.', 'bad'));
   }
 
   function goals() {
@@ -301,7 +453,7 @@ const UI = (() => {
     const card = G.bank.bankId ? bankCardHTML(bal, G.bank.bankName || 'Banque', G.name, true) :
       '<div class="empty" style="padding:20px">Ouvrez un compte pour obtenir votre carte.</div>';
     return '<h1>Bonjour, ' + esc(G.name) + '.</h1>' +
-      '<div class="sub">Météo : <b>' + weatherChip() + '</b> · niveau ' + l + ' · ' + Math.round(cur/need*100) + ' % XP' + (G.health.sick ? ' · <b style="color:var(--red)">malade</b>' : '') + '</div>' +
+      '<div class="sub">Météo : <b>' + weatherChip() + '</b> · niveau ' + l + ' · ' + Math.round(cur/need*100) + ' % XP' + (G.health.sick ? ' · <b style="color:var(--red)">malade</b>' : '') + (G.adminMod ? ' · <b style="color:var(--gold)">' + (G.adminMod.type === 'boost' ? '⚡ boost' : '🐌 malus') + '</b>' : '') + '</div>' +
       '<div class="grid2"><div>' + card + '</div>' +
       '<div class="kpi"><div class="k-lbl">Impôts versés</div><div class="k-val" style="color:var(--red)">' + eur(G.stats.tax) + '</div>' +
       '<div class="k-lbl" style="margin-top:12px">Niveau ' + l + '</div><div class="bar b-gold" style="margin:6px 0 0"><div class="fill" style="width:' + (cur/need*100) + '%"></div></div></div></div>' +
@@ -369,7 +521,9 @@ const UI = (() => {
     if (T.selBiz >= 0 && G.biz[T.selBiz]) return rBizDetail(G.biz[T.selBiz], T.selBiz);
     const owned = G.biz.map((b,i) => '<div class="panel" style="cursor:pointer" data-act="selBiz" data-i="' + i + '"><h2>' + esc(b.name) + ' <span class="chip gold">' + DATA.bizTypes[b.type].label.toUpperCase() + '</span></h2><div class="sub" style="margin:0">Réputation ' + Math.round(b.rep) + '/100 · ' + b.emps.length + ' salariés · CA ' + eur(b.rev) + '</div></div>').join('') || '<div class="panel"><div class="empty">Aucune entreprise.</div></div>';
     const create = Object.entries(DATA.bizTypes).map(([type,bt]) => '<div class="rowline"><div><div class="lbl">' + bt.label + '</div><div class="det">Capital : ' + eur(bt.cost) + (bt.req ? ' · Requis : ' + DATA.form.find(f => f.id === bt.req).n : '') + '</div></div><button class="btn btn-sm btn-primary" data-act="openCreate" data-type="' + type + '">Fonder</button></div>').join('');
-    return '<h1>Mes entreprises</h1><div class="sub">Panneaux complets par entreprise.</div>' + owned + '<div class="panel"><h2>Créer une entreprise</h2>' + create + '</div>';
+    return '<h1>Mes entreprises</h1><div class="sub">Panneaux complets + annonces publiques.</div>' +
+      (G.biz.length ? '<div style="margin-bottom:14px"><button class="btn btn-primary" data-act="openAnnounce">📣 Faire une annonce publique</button></div>' : '') +
+      owned + '<div class="panel"><h2>Créer une entreprise</h2>' + create + '</div>';
   }
 
   function bizTabs(b) {
@@ -427,7 +581,8 @@ const UI = (() => {
       body = '<div style="margin-bottom:12px">' + (activeChips(b) || '<span class="chip">Aucune campagne</span>') + '</div>' +
         ((DATA.mkt[b.type] || []).map(a => { const owned = a.once && perk(b, a.perk);
           return '<div class="rowline"><div><div class="lbl">' + a.n + (owned ? ' <span class="chip green">ACTIF</span>' : '') + '</div><div class="det">' + a.d + '</div></div>' +
-          (owned ? '' : '<button class="btn btn-sm btn-primary" data-act="mktDo" data-b="' + i + '" data-a="' + a.id + '">' + eur(a.cost) + '</button>') + '</div>'; }).join('') || '<div class="empty">Rien.</div>');
+          (owned ? '' : '<button class="btn btn-sm btn-primary" data-act="mktDo" data-b="' + i + '" data-a="' + a.id + '">' + eur(a.cost) + '</button>') + '</div>'; }).join('') || '<div class="empty">Rien.</div>') +
+        '<div style="margin-top:14px"><button class="btn btn-primary" data-act="openAnnounce">📣 Faire une annonce publique</button></div>';
     }
     else if (T.bizTab === 'hr') {
       const empList = b.emps.map((e,ei) => '<div class="rowline"><div><div class="lbl">' + esc(e.n) + '</div><div class="det">' + eur(e.h) + '/h</div></div><button class="btn btn-sm btn-danger" data-act="fire" data-b="' + i + '" data-i="' + ei + '">Licencier</button></div>').join('') || '<div class="empty">Aucun.</div>';
@@ -452,7 +607,7 @@ const UI = (() => {
 
   function rBanque() {
     if (!G.bank.bankId) {
-      return '<h1>Choisir sa banque</h1><div class="sub">Cliquez sur une banque pour voir sa description et ses informations, puis ouvrez un compte.</div>' +
+      return '<h1>Choisir sa banque</h1><div class="sub">Cliquez sur une banque pour voir sa description, puis ouvrez un compte.</div>' +
         '<div class="grid2"><div>' + DATA.banks.map(b =>
           '<div class="bank-offer" data-act="bankDetails" data-id="' + b.id + '" data-name="' + esc(b.n) + '" data-rate="' + b.lv + '"><div class="bo-name">🏦 ' + esc(b.n) + '</div><div class="bo-det">Livret A ' + b.lv + ' %/an</div></div>').join('') + '</div>' +
         '<div><h3 style="margin:0 0 10px">Banques fondées par les joueurs</h3><div id="playerBanksList"><div class="empty">Chargement…</div></div></div></div>';
@@ -468,8 +623,9 @@ const UI = (() => {
     const emp = G.biz.reduce((a,b) => a + b.emps.length, 0);
     if (emp) prelev.push(['URSSAF', emp*45]);
     const jrn = (G.journal || []).slice(0, 14).map(j => '<tr><td class="mono" style="color:var(--dim)">' + new Date(j.t).toLocaleTimeString('fr-FR') + '</td><td>' + esc(j.label) + '</td><td class="money ' + (j.amt < 0 ? 'neg' : '') + '">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</td></tr>').join('') || '<tr><td colspan="3" class="empty">Aucune opération.</td></tr>';
-    return '<h1>Banque — ' + esc(bankName) + '</h1><div class="sub">Votre carte, vos mouvements, votre épargne.</div>' +
-      '<div class="grid2"><div>' + bankCardHTML(G.bank.compte, bankName, G.name, false) + '</div>' +
+    return '<h1>Banque — ' + esc(bankName) + '</h1><div class="sub">Votre carte, vos mouvements, vos transferts.</div>' +
+      '<div class="grid2"><div>' + bankCardHTML(G.bank.compte, bankName, G.name, false) +
+      '<div style="margin-top:12px"><button class="btn btn-primary" data-act="openSendMoney">💸 Envoyer de l’argent</button></div></div>' +
       '<div><div class="grid2" style="gap:12px"><div class="kpi"><div class="k-lbl">Livret A (' + bankRate() + ' %)</div><div class="k-val">' + eur(G.bank.livret) + '</div></div>' +
       '<div class="kpi"><div class="k-lbl">Liquide</div><div class="k-val">' + eur(G.cash) + '</div></div></div>' +
       '<div style="margin-top:12px"><button class="btn btn-danger btn-sm" data-act="leaveBank">Se désinscrire / clôturer</button></div></div></div>' +
@@ -518,7 +674,7 @@ const UI = (() => {
 
   function rSante() {
     const doc = G.health.doctor ? DATA.doctors.find(x => x.id === G.health.doctor) : null;
-    return '<h1>Santé</h1><div class="sub">Médecin traitant, vaccins et rendez-vous. Trop manger (>100) peut vous rendre malade.</div>' +
+    return '<h1>Santé</h1><div class="sub">Médecin traitant, vaccins et rendez-vous. Trop manger (>100) peut rendre malade.</div>' +
       '<div class="grid2"><div class="panel"><h2>État</h2>' +
       '<div class="rowline"><div class="lbl">Santé</div><span class="mono">' + Math.round(G.vitals.sante) + '/100</span></div>' +
       '<div class="rowline"><div class="lbl">Faim</div><span class="mono' + (G.vitals.faim > 100 ? ' neg' : '') + '">' + Math.round(G.vitals.faim) + '/200' + (G.vitals.faim > 100 ? ' (trop plein)' : '') + '</span></div>' +
@@ -579,7 +735,9 @@ const UI = (() => {
     return '<h1>Profil</h1><div class="sub">' + age + ' minute(s) · ' + esc(DB.label()) + '</div>' +
       '<div class="grid2"><div class="panel"><h2>Stats</h2><table class="t"><tr><td>Revenus</td><td class="money">' + eur(G.stats.earned) + '</td></tr><tr><td>Impôts</td><td class="money neg">' + eur(G.stats.tax) + '</td></tr><tr><td>Ventes</td><td>' + G.stats.sales + '</td></tr><tr><td>XP</td><td>' + G.xp + '</td></tr><tr><td>Postes</td><td>' + G.jobs.length + ' (' + Math.round(totalLoad()*100) + ' %)</td></tr><tr><td>Entreprises</td><td>' + G.biz.length + '</td></tr><tr><td>Immo</td><td>' + G.houses.length + '</td></tr><tr><td>Compétences</td><td>' + Object.values(G.skills).reduce((a,v)=>a+v,0) + '</td></tr></table></div>' +
       '<div class="panel"><h2>Compte</h2><div class="rowline"><div class="lbl">Pseudo</div><div>' + esc(G.name) + '</div></div>' +
-      '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost" data-act="logout">Déconnexion</button><button class="btn btn-danger" data-act="resetSave">Réinitialiser la vie</button><button class="btn btn-danger" data-act="deleteAccount">Supprimer mon compte</button></div></div></div>';
+      '<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-ghost" data-act="logout">Déconnexion</button><button class="btn btn-danger" data-act="resetSave">Réinitialiser la vie</button><button class="btn btn-danger" data-act="deleteAccount">Supprimer mon compte</button>' +
+      (T.isAdmin ? '<button class="btn btn-primary" data-act="openAdmin">🛡 Admin</button>' : '') +
+      '</div></div></div>';
   }
 
   function spark(cv, data, color) {
@@ -670,5 +828,5 @@ const UI = (() => {
     if (t.dataset.act === 'jobQ') { clearTimeout(T.qT); T.qT = setTimeout(() => { T.jobF.q = t.value; UI.render(true); const inp = document.querySelector('[data-act="jobQ"]'); if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } }, 300); }
   });
 
-  return { toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails };
+  return { toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, moneyFly, moneyRain, modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI, buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails, openSendMoney, doSendMoney, openAnnounce, doAnnounce, openAdmin, adminDo };
 })();
