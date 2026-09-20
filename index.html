@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <script src="script.js"></script>
+    <title>LifeSimulator</title>
+</head>
+<body>
+    <h1>Welcome to LifeSimulator</h1>
+    <p>Life simulator le meilleurs simulator de vie du monde</p>
+    <button onclick="startGame()">Commencer le jeu</button>
+
+    <div id="gameInfo" style="display: none;">
+        <h2>État du jeu</h2>
+        <p id="health">Santé: 100</p>
+        <p id="happiness">Happiness: 100</p>
+        <p id="money">Argent: 50</p>
+    </div>
+
+    <button onclick="makeChoice('work')">Travailler</button>
+    <button onclick="makeChoice('play')">Jouer</button>
+    <button onclick="makeChoice('relax')">Se détendre</button>
+
+
+    <button onclick="resetGame()">Réinitialiser le jeu</button>
+
+
+
+
+</body>
+</html>
