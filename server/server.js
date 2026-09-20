@@ -1,48 +1,87 @@
-/* ═══════════ HEXALIFE — serveur Node zéro dépendance (compatible Render) ═══════════
-   Lance :  node server/server.js   (ou npm start)
-   Env utiles sur Render :
-     PORT        → injecté automatiquement par Render
-     DB_PATH     → dossier où écrire hexalife.db (ex: /var/data avec un Persistent Disk)
-     API_DISABLED=1 → désactive l'API (le jeu bascule en base locale navigateur)
-────────────────────────────────────────────────────────────────────────────────── */
+/* ═══════════ HEXALIFE — serveur Node zéro dépendance (Render + base persistante) ═══════════
+   Backends de base de données (par priorité) :
+     1) Upstash Redis  → si UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN définis
+                         (RECOMMANDÉ sur Render gratuit : survit aux restarts / spin-down)
+     2) Fichier        → si DB_PATH défini (Persistent Disk Render, plan payant)
+     3) Fichier local  → sinon (ÉPHÉMÈRE sur Render gratuit : déconseillé)
+   Aucune donnée n'est jamais stockée dans le navigateur.
+────────────────────────────────────────────────────────────────────────────────────────── */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const ROOT = path.join(__dirname, '..');          // dossier du site (index.html, css/, js/)
+const ROOT = path.join(__dirname, '..');
 const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0';                           // requis par les PaaS type Render
+const HOST = '0.0.0.0';
 const API_ENABLED = process.env.API_DISABLED !== '1';
 
-/* ── Base de données : chemin configurable (disque persistant Render) ── */
+/* ────────────────────────── CONFIGURATION DU STOCKAGE ────────────────────────── */
+const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
+const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const DB_KEY = process.env.DB_KEY || 'hexalife:db';
+const USE_UPSTASH = !!(UP_URL && UP_TOKEN);
+
 const DB_DIR = process.env.DB_PATH || __dirname;
 const DB_FILE = path.join(DB_DIR, 'hexalife.db');
-try { fs.mkdirSync(DB_DIR, { recursive: true }); }
-catch (e) { console.error('[DB] Impossible de créer le dossier :', e.message); }
 
-let DB = load();
-function load() {
-  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-  catch (e) { return { users: {}, sessions: {}, saves: {} }; }
-}
-let writeQueued = false;
-function persist() {
-  if (writeQueued) return;
-  writeQueued = true;
-  setTimeout(() => {
-    writeQueued = false;
-    try { fs.writeFileSync(DB_FILE, JSON.stringify(DB)); }
-    catch (e) { console.error('[DB] Écriture impossible :', e.message); }
-  }, 250);
-}
-function flush() {
-  try { fs.writeFileSync(DB_FILE, JSON.stringify(DB)); } catch (e) {}
-}
-/* Render envoie SIGTERM avant arrêt : on sauvegarde proprement */
-process.on('SIGTERM', () => { flush(); process.exit(0); });
-process.on('SIGINT', () => { flush(); process.exit(0); });
+let DB = { users: {}, sessions: {}, saves: {} };
 
+/* ────────────────────────── BACKEND UPSTASH (REST) ────────────────────────── */
+async function upCommand(cmd) {
+  const r = await fetch(UP_URL, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + UP_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify(cmd)
+  });
+  if (!r.ok) throw new Error('Upstash HTTP ' + r.status);
+  const j = await r.json();
+  return j.result;
+}
+
+/* ────────────────────────── CHARGEMENT / SAUVEGARDE ────────────────────────── */
+async function loadDB() {
+  if (USE_UPSTASH) {
+    try {
+      const raw = await upCommand(['GET', DB_KEY]);
+      if (raw) { console.log('[DB] Base chargée depuis Upstash.'); return JSON.parse(raw); }
+      console.log('[DB] Base Upstash vide → création.');
+    } catch (e) { console.error('[DB] Lecture Upstash échouée :', e.message); }
+    return { users: {}, sessions: {}, saves: {} };
+  }
+  try {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+    const d = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    console.log('[DB] Base chargée depuis fichier : ' + DB_FILE);
+    if (!process.env.DB_PATH) console.warn('[DB] ⚠ ATTENTION : fichier LOCAL ÉPHÉMÈRE sur Render gratuit. Configurez Upstash ou un Persistent Disk.');
+    return d;
+  } catch (e) {
+    return { users: {}, sessions: {}, saves: {} };
+  }
+}
+
+async function persistNow() {
+  const payload = JSON.stringify(DB);
+  if (USE_UPSTASH) { await upCommand(['SET', DB_KEY, payload]); return; }
+  fs.mkdirSync(DB_DIR, { recursive: true });
+  fs.writeFileSync(DB_FILE, payload);
+}
+
+let saveTimer = null;
+function persist() {           /* debounce : évite d'écrire à chaque requête */
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistNow().catch(e => console.error('[DB] Écriture échouée :', e.message));
+  }, 400);
+}
+
+/* filet de sécurité : sauvegarde périodique + flush propre à l'arrêt */
+setInterval(() => { persistNow().catch(() => {}); }, 30000);
+process.on('SIGTERM', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
+process.on('SIGINT', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
+
+/* ────────────────────────── OUTILS ────────────────────────── */
 const hashPass = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
 const validMail = m => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(m || '');
 
@@ -71,7 +110,8 @@ const MIME = {
   '.md': 'text/plain; charset=utf-8'
 };
 
-http.createServer(async (req, res) => {
+/* ────────────────────────── SERVEUR ────────────────────────── */
+const server = http.createServer(async (req, res) => {
   const url = (req.url || '/').split('?')[0];
   try {
     /* ══════════ API ══════════ */
@@ -80,7 +120,7 @@ http.createServer(async (req, res) => {
       const body = (req.method === 'POST') ? await readBody(req) : {};
 
       if (url === '/api/health')
-        return json(res, 200, { ok: true, mode: 'hexalife.db', users: Object.keys(DB.users).length });
+        return json(res, 200, { ok: true, mode: USE_UPSTASH ? 'upstash' : 'fichier', users: Object.keys(DB.users).length });
 
       if (url === '/api/register' && req.method === 'POST') {
         const u = String(body.user || '').trim();
@@ -146,14 +186,20 @@ http.createServer(async (req, res) => {
     if (!fs.existsSync(p)) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('404'); }
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(p).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-store'   /* évite les vieux JS/CSS cachés après un déploiement */
+      'Cache-Control': 'no-store'
     });
     fs.createReadStream(p).pipe(res);
   } catch (e) {
     json(res, 500, { err: 'Erreur serveur.' });
   }
-}).listen(PORT, HOST, () => {
-  console.log('HEXALIFE → http://' + HOST + ':' + PORT);
-  console.log('Base de données : ' + DB_FILE);
-  console.log('API : ' + (API_ENABLED ? 'activée' : 'DÉSACTIVÉE (mode local navigateur)'));
 });
+
+/* ────────────────────────── DÉMARRAGE (attend le chargement de la base) ────────────────────────── */
+(async () => {
+  DB = await loadDB();
+  server.listen(PORT, HOST, () => {
+    console.log('HEXALIFE → http://' + HOST + ':' + PORT);
+    console.log('Backend base : ' + (USE_UPSTASH ? 'Upstash Redis (persistant)' : 'fichier (' + DB_FILE + ')'));
+    console.log('API : ' + (API_ENABLED ? 'activée' : 'DÉSACTIVÉE'));
+  });
+})();
