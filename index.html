@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HEXALIFE — Simulateur de vie française</title>
+<meta name="description" content="Simulateur de vie et d'économie française en temps réel.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230f1b21'/><path d='M8 22 L16 10 L24 22 Z' fill='%23e8b04b'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ══════════ INTRO ══════════ -->
+<div id="scr-intro" class="screen active">
+  <div class="intro-sky"></div>
+  <div class="intro-dawn" id="introDawn"></div>
+  <div class="citylayer far" id="cityFar"></div>
+  <div class="citylayer near" id="cityNear"></div>
+  <div class="intro-ground"></div>
+  <div class="walker" id="walker">
+    <svg viewBox="0 0 60 92" width="82" height="124" aria-hidden="true">
+      <g class="w-root">
+        <circle cx="30" cy="12" r="7.5" class="w-head"/>
+        <path d="M30 19 L30 50" class="w-line w-torso"/>
+        <g class="w-armA"><path d="M30 26 L31 45" class="w-line"/><rect x="27" y="43" width="11" height="9" rx="1.5" class="w-case"/></g>
+        <g class="w-armB"><path d="M30 26 L29 43" class="w-line"/></g>
+        <g class="w-legA"><path d="M30 50 L31 74" class="w-line"/><path d="M31 74 L39 74" class="w-line w-foot"/></g>
+        <g class="w-legB"><path d="M30 50 L29 74" class="w-line"/><path d="M29 74 L37 74" class="w-line w-foot"/></g>
+      </g>
+    </svg>
+  </div>
+  <div class="intro-ui">
+    <div class="intro-logo">HEXA<span>LIFE</span></div>
+    <div class="intro-sub">Simulateur de vie &middot; Économie française &middot; Temps réel</div>
+    <div class="loadbar"><div class="loadbar-fill" id="loadFill"></div></div>
+    <div class="load-meta"><span id="loadTip">Initialisation…</span><span id="loadPct">0%</span></div>
+    <div class="load-steps" id="loadSteps"></div>
+    <button id="btnStart" class="btn btn-primary btn-lg" disabled>Entrer en ville</button>
+  </div>
+</div>
+
+<!-- ══════════ AUTH ══════════ -->
+<div id="scr-auth" class="screen">
+  <div class="auth-wrap">
+    <div class="auth-left">
+      <div class="auth-brand">HEXA<span>LIFE</span></div>
+      <p class="auth-pitch">Créez votre citoyen, passez des diplômes, signez un CDI à temps plein ou partiel, fondez votre boulangerie, votre agence immobilière ou votre propre banque. 800 citoyens vivent et consomment autour de vous, en direct.</p>
+      <ul class="auth-points">
+        <li>Salaire versé sur votre compte, impôts prélevés dessus</li>
+        <li>Temps plein ou partiel : cumulez deux jobs malins</li>
+        <li>Panneaux d'entreprise complets : prod, RH, upgrades, compta</li>
+        <li>Succès, défis, niveaux et opportunités flash</li>
+      </ul>
+      <div class="auth-skyline" id="authSky"></div>
+    </div>
+    <div class="auth-right">
+      <div class="auth-tabs" id="authTabs">
+        <div class="glider"></div>
+        <button class="atab active" data-act="authTab" data-t="login">Connexion</button>
+        <button class="atab" data-act="authTab" data-t="reg">Inscription</button>
+      </div>
+      <form id="formLogin" class="auth-form anim" autocomplete="off">
+        <label>Pseudo ou e-mail<input id="li_user" type="text" maxlength="40" required></label>
+        <label>Mot de passe<input id="li_pass" type="password" required></label>
+        <div class="auth-msg" id="authMsg"></div>
+        <button class="btn btn-primary btn-block" type="submit" id="li_btn">Se connecter</button>
+      </form>
+      <form id="formReg" class="auth-form" autocomplete="off" hidden>
+        <label>Pseudo (3 caractères min.)<input id="rg_user" type="text" maxlength="20" required></label>
+        <label>Adresse e-mail<input id="rg_mail" type="email" required></label>
+        <label>Mot de passe (4 caractères min.)<input id="rg_pass" type="password" required></label>
+        <label>Confirmer le mot de passe<input id="rg_pass2" type="password" required></label>
+        <div class="auth-msg" id="regMsg"></div>
+        <button class="btn btn-primary btn-block" type="submit" id="rg_btn">Créer mon citoyen</button>
+      </form>
+      <div class="auth-note" id="dbMode">Base de données : détection…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ JEU ══════════ -->
+<div id="scr-app" class="screen">
+  <div class="app-skyline" id="appSky"></div>
+
+  <header class="topbar">
+    <div class="tb-left">
+      <div class="tb-logo">HEXA<span>LIFE</span></div>
+      <div class="tb-player">
+        <div class="tb-name" id="tbName">—</div>
+        <div class="tb-job" id="tbJob">Sans emploi</div>
+      </div>
+      <div class="tb-lvl"><span class="tb-lvl-n" id="tbLvl">Niv. 1</span>
+        <div class="bar b-gold tb-xp"><div class="fill" id="tbXp"></div></div></div>
+    </div>
+    <div class="tb-save" id="tbSave">Sauvegarde auto active</div>
+    <div class="tb-money" id="tbMoney">
+      <div class="tb-cash-wrap">
+        <div class="tb-cash" id="tbCash" title="Solde principal">0,00 €</div>
+        <span class="tb-cash-lbl" id="tbCashLbl">liquide</span>
+      </div>
+      <button class="btn btn-plus" data-act="tab" data-id="plus" title="Acheter de l'argent (€)">+</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" data-act="logout" title="Déconnexion">Sortir</button>
+  </header>
+
+  <div class="ticker"><div class="ticker-track" id="ticker"></div></div>
+
+  <div class="strip">
+    <div class="strip-cell"><span class="s-label">Revenus /s</span><span class="s-val up" id="stRev">+0,00 €</span></div>
+    <div class="strip-cell"><span class="s-label">Charges /s</span><span class="s-val down" id="stChg">−0,00 €</span></div>
+    <div class="strip-cell"><span class="s-label">Net /s</span><span class="s-val" id="stNet">0,00 €</span></div>
+    <div class="strip-cell"><span class="s-label">Impôts &amp; cotisations versés</span><span class="s-val" id="stTax">0 €</span></div>
+  </div>
+
+  <div id="boostBar" class="boost" hidden><span id="boostTxt"></span><span class="mono" id="boostCd"></span></div>
+
+  <div class="hud">
+    <nav class="rail" id="rail"></nav>
+    <main class="view" id="view"></main>
+  </div>
+
+  <div class="vitals">
+    <div class="v-row" id="rowSante"><span class="v-ico" style="color:var(--green)">♥</span><span class="v-name">Santé</span>
+      <div class="bar b-green"><div class="fill" id="barSante"></div></div><span class="v-num" id="numSante">100</span></div>
+    <div class="v-row" id="rowFaim"><span class="v-ico" style="color:var(--orange)">◆</span><span class="v-name">Faim</span>
+      <div class="bar b-orange"><div class="fill" id="barFaim"></div></div><span class="v-num" id="numFaim">100</span></div>
+    <div class="v-row" id="rowSoif"><span class="v-ico" style="color:var(--blue)">◈</span><span class="v-name">Soif</span>
+      <div class="bar b-blue"><div class="fill" id="barSoif"></div></div><span class="v-num" id="numSoif">100</span></div>
+    <div class="v-status" id="vStatus"></div>
+  </div>
+
+  <div id="jailOv" class="jail" hidden>
+    <div class="jail-card">
+      <div class="jail-title">GARDE À VUE</div>
+      <p>La police vous a interpellé. Vos activités sont suspendues.</p>
+      <div class="jail-timer" id="jailT">60</div>
+    </div>
+  </div>
+
+  <div id="tutoOv" hidden>
+    <div class="tuto-card" id="tutoCard">
+      <div class="tuto-step" id="tutoStepLbl">1/9</div>
+      <h3 id="tutoTitle"></h3>
+      <p id="tutoText"></p>
+      <div class="tuto-actions">
+        <button class="btn btn-ghost btn-sm" data-act="tutoSkip">Passer le tutoriel</button>
+        <button class="btn btn-primary btn-sm" data-act="tutoNext" id="tutoNext">Suivant →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="modalRoot"></div>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
