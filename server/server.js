@@ -1,11 +1,4 @@
-/* ═══════════ HEXALIFE — serveur Node zéro dépendance (Render + base persistante) ═══════════
-   Backends de base de données (par priorité) :
-     1) Upstash Redis  → si UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN définis
-                         (RECOMMANDÉ sur Render gratuit : survit aux restarts / spin-down)
-     2) Fichier        → si DB_PATH défini (Persistent Disk Render, plan payant)
-     3) Fichier local  → sinon (ÉPHÉMÈRE sur Render gratuit : déconseillé)
-   Aucune donnée n'est jamais stockée dans le navigateur.
-────────────────────────────────────────────────────────────────────────────────────────── */
+/* ═══════════ HEXALIFE — serveur Node v9 (Render + base persistante + présence live) ═══════════ */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -16,7 +9,6 @@ const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const API_ENABLED = process.env.API_DISABLED !== '1';
 
-/* ────────────────────────── CONFIGURATION DU STOCKAGE ────────────────────────── */
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const DB_KEY = process.env.DB_KEY || 'hexalife:db';
@@ -26,8 +18,9 @@ const DB_DIR = process.env.DB_PATH || __dirname;
 const DB_FILE = path.join(DB_DIR, 'hexalife.db');
 
 let DB = { users: {}, sessions: {}, saves: {} };
+/* Présence en mémoire (volatile, normale pour du "live") */
+let PRESENCE = {};
 
-/* ────────────────────────── BACKEND UPSTASH (REST) ────────────────────────── */
 async function upCommand(cmd) {
   const r = await fetch(UP_URL, {
     method: 'POST',
@@ -39,7 +32,6 @@ async function upCommand(cmd) {
   return j.result;
 }
 
-/* ────────────────────────── CHARGEMENT / SAUVEGARDE ────────────────────────── */
 async function loadDB() {
   if (USE_UPSTASH) {
     try {
@@ -53,7 +45,7 @@ async function loadDB() {
     fs.mkdirSync(DB_DIR, { recursive: true });
     const d = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     console.log('[DB] Base chargée depuis fichier : ' + DB_FILE);
-    if (!process.env.DB_PATH) console.warn('[DB] ⚠ ATTENTION : fichier LOCAL ÉPHÉMÈRE sur Render gratuit. Configurez Upstash ou un Persistent Disk.');
+    if (!process.env.DB_PATH) console.warn('[DB] ⚠ fichier LOCAL ÉPHÉMÈRE sur Render gratuit.');
     return d;
   } catch (e) {
     return { users: {}, sessions: {}, saves: {} };
@@ -66,21 +58,17 @@ async function persistNow() {
   fs.mkdirSync(DB_DIR, { recursive: true });
   fs.writeFileSync(DB_FILE, payload);
 }
-
 let saveTimer = null;
 function persist() {
   if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    persistNow().catch(e => console.error('[DB] Écriture échouée :', e.message));
-  }, 400);
+  saveTimer = setTimeout(() => { saveTimer = null; persistNow().catch(e => console.error('[DB] Écriture échouée :', e.message)); }, 400);
 }
-
 setInterval(() => { persistNow().catch(() => {}); }, 30000);
+/* purge présence > 120 s */
+setInterval(() => { const now = Date.now(); for (const k in PRESENCE) { if (now - PRESENCE[k] > 120000) delete PRESENCE[k]; } }, 30000);
 process.on('SIGTERM', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
 process.on('SIGINT', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
 
-/* ────────────────────────── OUTILS ────────────────────────── */
 const hashPass = (pass, salt) => crypto.scryptSync(String(pass), salt, 32).toString('hex');
 const validMail = m => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(m || '');
 
@@ -101,6 +89,13 @@ function authUser(req) {
   const token = h.replace('Bearer ', '');
   return DB.sessions[token] ? { token, name: DB.sessions[token] } : null;
 }
+function presenceSnapshot() {
+  const now = Date.now();
+  const names = [];
+  for (const k in PRESENCE) { if (now - PRESENCE[k] < 60000) names.push(k); }
+  return { count: names.length, names };
+}
+function isOnline(name) { return !!PRESENCE[name] && (Date.now() - PRESENCE[name] < 60000); }
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -109,17 +104,24 @@ const MIME = {
   '.md': 'text/plain; charset=utf-8'
 };
 
-/* ────────────────────────── SERVEUR ────────────────────────── */
 const server = http.createServer(async (req, res) => {
   const url = (req.url || '/').split('?')[0];
   try {
-    /* ══════════ API ══════════ */
     if (url.startsWith('/api/')) {
       if (!API_ENABLED) return json(res, 404, { ok: false, err: 'API désactivée.' });
       const body = (req.method === 'POST') ? await readBody(req) : {};
 
       if (url === '/api/health')
         return json(res, 200, { ok: true, mode: USE_UPSTASH ? 'upstash' : 'fichier', users: Object.keys(DB.users).length });
+
+      /* ── Présence live ── */
+      if (url === '/api/ping' && req.method === 'POST') {
+        const a = authUser(req);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        PRESENCE[a.name] = Date.now();
+        return json(res, 200, presenceSnapshot());
+      }
+      if (url === '/api/presence') return json(res, 200, presenceSnapshot());
 
       if (url === '/api/register' && req.method === 'POST') {
         const u = String(body.user || '').trim();
@@ -155,19 +157,16 @@ const server = http.createServer(async (req, res) => {
         const a = authUser(req);
         return a ? json(res, 200, { ok: true, name: a.name }) : json(res, 401, { ok: false });
       }
-
       if (url === '/api/logout' && req.method === 'POST') {
         const a = authUser(req);
-        if (a) { delete DB.sessions[a.token]; persist(); }
+        if (a) { delete DB.sessions[a.token]; delete PRESENCE[a.name]; persist(); }
         return json(res, 200, { ok: true });
       }
-
       if (url === '/api/load') {
         const a = authUser(req);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
         return json(res, 200, { state: DB.saves[a.name] || null });
       }
-
       if (url === '/api/save' && req.method === 'POST') {
         const a = authUser(req);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
@@ -175,7 +174,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true });
       }
 
-      /* ── Banques fondées par les joueurs (listées pour tous) ── */
+      /* ── Banques fondées par les joueurs ── */
       if (url === '/api/banks') {
         const banks = [];
         Object.keys(DB.saves).forEach(owner => {
@@ -183,21 +182,15 @@ const server = http.createServer(async (req, res) => {
           if (s && Array.isArray(s.biz)) {
             s.biz.forEach((b, idx) => {
               if (b && b.type === 'banque') {
-                banks.push({
-                  id: 'player:' + owner + ':' + idx,
-                  name: b.name || ('Banque ' + owner),
-                  owner: owner,
-                  livret: b.tauxLivret || 2,
-                  accounts: b.accounts || 0
-                });
+                banks.push({ id: 'player:' + owner + ':' + idx, name: b.name || ('Banque ' + owner), owner, livret: b.tauxLivret || 2, accounts: b.accounts || 0 });
               }
             });
           }
         });
-        return json(res, 200, { banks: banks });
+        return json(res, 200, { banks });
       }
 
-      /* ── Clients joueurs inscrits à MA banque (pour le propriétaire) ── */
+      /* ── Clients inscrits à MA banque (infos complètes) ── */
       if (url === '/api/banks/clients') {
         const a = authUser(req);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
@@ -206,19 +199,27 @@ const server = http.createServer(async (req, res) => {
         Object.keys(DB.saves).forEach(other => {
           const s = DB.saves[other];
           if (s && s.bank && typeof s.bank.bankId === 'string' && s.bank.bankId.indexOf(prefix) === 0) {
-            clients.push({ name: other, compte: s.bank.compte || 0, livret: s.bank.livret || 0 });
+            clients.push({
+              name: other,
+              compte: s.bank.compte || 0,
+              livret: s.bank.livret || 0,
+              loans: (s.bank.loans || []).map(L => ({ n: L.n, reste: L.reste || 0, mens: L.mens || 0 })),
+              jobs: (s.jobs || []).length,
+              biz: (s.biz || []).length,
+              online: isOnline(other)
+            });
           }
         });
-        return json(res, 200, { clients: clients });
+        return json(res, 200, { clients });
       }
 
-      /* ── Suppression définitive du compte ── */
       if (url === '/api/delete' && req.method === 'POST') {
         const a = authUser(req);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
         delete DB.users[a.name];
         delete DB.saves[a.name];
         delete DB.sessions[a.token];
+        delete PRESENCE[a.name];
         persist();
         return json(res, 200, { ok: true });
       }
@@ -226,7 +227,6 @@ const server = http.createServer(async (req, res) => {
       return json(res, 404, { err: 'Route inconnue.' });
     }
 
-    /* ══════════ Fichiers statiques ══════════ */
     let p = path.normalize(path.join(ROOT, url === '/' ? 'index.html' : url));
     if (!p.startsWith(ROOT)) return json(res, 403, { err: 'Interdit.' });
     if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, 'index.html');
@@ -241,7 +241,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-/* ────────────────────────── DÉMARRAGE (attend le chargement de la base) ────────────────────────── */
 (async () => {
   DB = await loadDB();
   server.listen(PORT, HOST, () => {
