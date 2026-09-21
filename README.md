@@ -94,11 +94,33 @@ tout le solo est jouable, seul le multijoueur (transferts, annonces, classement)
 ### Variables d'environnement serveur
 | Variable | Rôle |
 |---|---|
-| `PORT` | port d'écoute (défaut 3000) |
+| `PORT` | port d'écoute (défaut 3000 — fourni automatiquement par Render) |
 | `ADMIN_NAME` | pseudo disposant du panneau admin |
 | `DB_PATH` | dossier du fichier `hexalife.db` (persistant) |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | base Redis partagée (Render, etc.) |
 | `API_DISABLED=1` | couper l'API (statique seul) |
+
+### 🚢 Déployer sur Render + Upstash (testé, cf. `npm run test:upstash`)
+1. **Upstash** : créez une base Redis (plan gratuit), copiez l'**URL REST** et le **token**
+   (console Upstash → votre base → onglet REST API).
+2. **Render** : New → **Web Service** → votre dépôt GitHub.
+   - Build command : vide (aucune dépendance) ou `npm install`
+   - Start command : `npm start`
+   - Variables d'environnement : `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+     `ADMIN_NAME` (votre pseudo). `PORT` est injecté par Render.
+   - Health check (optionnel) : `/api/health`
+3. **Migration automatique** : si votre base Upstash contient déjà des données de
+   l'ancienne version, elles sont migrées au démarrage (sessions chaîne → objet,
+   champs `holds`/`mailbox` créés) et les sauvegardes `v10` des joueurs sont
+   converties en `v11` côté client à la connexion — **personne ne perd sa vie**.
+   Vérifié par `test/upstash.test.mjs` (16 assertions, dont un redémarrage complet
+   simulant un redeploy).
+4. **Sans Upstash** : repli sur fichier local — fonctionne, mais le disque des
+   instances gratuites Render est éphémère (redéploiement = remise à zéro).
+   Upstash est donc fortement recommandé en production.
+5. Instance gratuite Render = veille après 15 min d'inactivité : le premier chargement
+   peut prendre quelques secondes ; l'intro attend la détection de base sans jamais
+   bloquer (timeout 3 s + garde-fou 4 s).
 
 ### Tests
 ```bash
