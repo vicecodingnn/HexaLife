@@ -820,3 +820,47 @@ html.reduced-motion .row-glow::before{animation:none !important}
   .ach-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
   .w-cd{display:none}
 }
+
+/* ═══════════ v11.1 — correctifs & nouvelles animations ═══════════ */
+/* effet ripple au clic sur tous les boutons */
+.btn .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.28);transform:scale(0);animation:ripple .6s ease-out both;pointer-events:none}
+.btn-primary .ripple{background:rgba(35,23,3,.25)}
+@keyframes ripple{from{transform:scale(0);opacity:.9}to{transform:scale(1);opacity:0}}
+html.reduced-motion .btn .ripple{display:none}
+
+/* cœur qui bat sur les jauges critiques */
+.v-row.low .bar .fill{animation:heartBeat .85s ease-in-out infinite}
+@keyframes heartBeat{0%,100%{filter:brightness(1)}12%{filter:brightness(1.65)}24%{filter:brightness(1)}36%{filter:brightness(1.45)}50%{filter:brightness(1)}}
+
+/* entreprise sous campagne : halo pulsant */
+.biz-card.boosted{border-color:var(--gold-dk);animation:boostGlow 2s ease-in-out infinite}
+@keyframes boostGlow{0%,100%{box-shadow:0 0 0 0 rgba(232,176,75,.0)}50%{box-shadow:0 0 26px 2px rgba(232,176,75,.28)}}
+
+/* grille des mouvements bancaires */
+.tr-grid{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.tr-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel2);transition:border-color .15s,transform .15s var(--ease)}
+.tr-row:hover{border-color:var(--line2);transform:translateX(2px)}
+.tr-ico{font-size:16px;width:26px;text-align:center;flex:0 0 auto}
+.tr-row .btn{flex:0 0 auto}
+
+/* prix du marché */
+.price-old{color:var(--dim);text-decoration:line-through;font-size:12px;font-family:var(--mono)}
+.price-tag{animation:tagPop .35s var(--ease) both}
+@keyframes tagPop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* barre d'état voiture */
+.car-bar{margin:8px 0 4px;height:8px;border-radius:4px}
+
+/* CORRECTIF : voiture B traversait hors champ (gauche→gauche) */
+.carB{left:calc(100% + 60px);bottom:22px;animation:driveB 13s 4s linear infinite}
+@keyframes driveB{from{transform:translateX(0) scaleX(-1)}to{transform:translateX(calc(-100vw - 240px)) scaleX(-1)}}
+
+/* CORRECTIF : spinner des boutons en chargement (centrage) */
+.btn.loading::after{content:"";position:absolute;inset:0;margin:auto;width:16px;height:16px;border:2px solid rgba(0,0,0,.35);border-top-color:#231703;border-radius:50%;animation:spin .7s linear infinite;background:transparent;left:0;top:0;right:0;bottom:0;transform:none}
+
+/* CORRECTIF : overlay niveau au-dessus des modales */
+#lvlOv{z-index:146}
+
+/* étincelle sur carte succès débloqué récemment */
+.ach-card.fresh{animation:achFresh 1.2s var(--ease) both}
+@keyframes achFresh{0%{transform:scale(.7);filter:brightness(2)}60%{transform:scale(1.06)}100%{transform:scale(1);filter:brightness(1)}}

@@ -30,7 +30,20 @@ const upLvl = (b, id) => (b && b.ups && b.ups[id]) || 0;
 const perk = (b, id) => !!(b && b.perks && b.perks[id]);
 const isPlayerBank = id => typeof id === 'string' && id.indexOf('player:') === 0;
 const idxOk = (v, len) => { const i = parseInt(v, 10); return (isFinite(i) && i >= 0 && i < len) ? i : -1; };
-const num = (v, dv, lo, hi) => { const n = typeof v === 'number' && isFinite(v) ? v : dv; return (lo !== undefined || hi !== undefined) ? clamp(n, lo === undefined ? -Infinity : lo, hi === undefined ? Infinity : hi) : n; };
+const num = (v, dv, lo, hi) => {
+  let n;
+  if (typeof v === 'number' && isFinite(v)) n = v;
+  else if (typeof v === 'string' && v.trim() !== '' && isFinite(+v)) n = +v; // ← les dataset DOM sont des chaînes !
+  else n = dv;
+  return (lo !== undefined || hi !== undefined) ? clamp(n, lo === undefined ? -Infinity : lo, hi === undefined ? Infinity : hi) : n;
+};
+/* Saisie utilisateur à la française : "1 200,50" → 1200.5 */
+const parseAmount = v => {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  const s = String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+};
 const dayKey = t => new Date(t || Date.now()).toISOString().slice(0, 10);
 function refresh() { UI.render(true); }
 
@@ -133,6 +146,7 @@ function newGame(name) {
     missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
     journal: [], tuto: 0, skills: {}, pendingPack: null,
     ach: {}, daily: { lastDay: '', streak: 0 },
+    market: { mult: {}, until: 0 }, histBal: [], carState: {}, sportCd: 0,
     stats: {
       earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0,
       jailed: false, orders: 0, lottoWins: 0, tutoDone: false, braquages: 0, transfersSent: 0
@@ -179,7 +193,7 @@ function sanitize(s) {
     return {
       c: j.c, o: j.o, title: typeof j.title === 'string' ? j.title : co[0],
       h: num(j.h, co[1], 5, 500), mode: j.mode === 'partiel' ? 'partiel' : 'plein',
-      since: num(j.since, Date.now(), 0), mins: num(j.mins, 0, 0), promo: !!j.promo
+      since: num(j.since, Date.now(), 0), mins: num(j.mins, 0, 0), promo: !!j.promo, negAt: num(j.negAt, 0, 0)
     };
   }) : [];
 
@@ -264,6 +278,23 @@ function sanitize(s) {
     streak: num(s.daily && s.daily.streak, 0, 0, 99999)
   };
 
+  /* marché, historique de solde, usure voitures, sport (v11.1) */
+  out.market = { mult: {}, until: num(s.market && s.market.until, 0, 0) };
+  if (s.market && s.market.mult && typeof s.market.mult === 'object') {
+    for (const f of DATA.foods) {
+      const m = num(s.market.mult[f.id], 1, 0.3, 2);
+      if (m !== 1) out.market.mult[f.id] = m;
+    }
+  }
+  if (out.market.until < Date.now()) out.market.until = 0;
+  out.histBal = Array.isArray(s.histBal) ? s.histBal.map(v => num(v, 0, -1e13, 1e13)).slice(-120) : [];
+  out.carState = {};
+  if (s.carState && typeof s.carState === 'object') for (const k of Object.keys(s.carState)) {
+    const i = parseInt(k, 10);
+    if (isFinite(i) && i >= 0 && i < DATA.cars.length) out.carState[i] = num(s.carState[k], 100, 5, 100);
+  }
+  out.sportCd = num(s.sportCd, 0, 0);
+
   const st = (s.stats && typeof s.stats === 'object') ? s.stats : {};
   out.stats = {};
   for (const k of Object.keys(d.stats)) {
@@ -347,6 +378,19 @@ function skillBonus(type) {
   return 0;
 }
 function carBonus() { return G.cars.length ? Math.max(...G.cars.map(i => (DATA.cars[i] || { b: 0 }).b)) : 0; }
+function carState(i) { return clamp(num(G.carState && G.carState[i], 100, 0, 100), 5, 100); }
+function worstCarState() { return G.cars.length ? Math.min(...G.cars.map(carState)) : 100; }
+function rollMarket() {
+  const mult = {};
+  DATA.foods.forEach(f => {
+    let m = rnd(0.92, 1.12);
+    if (Math.random() < 0.14) m = rnd(0.62, 0.85);        // promo
+    else if (Math.random() < 0.10) m = rnd(1.15, 1.35);   // tension
+    mult[f.id] = +m.toFixed(3);
+  });
+  G.market = { mult, until: Date.now() + 150000 };
+}
+function effPrice(f) { return +((f.p || 0) * num(G.market && G.market.mult && G.market.mult[f.id], 1, 0.3, 2)).toFixed(2); }
 function comfort() { return Math.min(10, G.houses.reduce((a, h) => a + (DATA.homes[h.i] ? DATA.homes[h.i].p / 60000 : 0), 0)); }
 function hasShelter() { return !!G.rental || G.houses.length > 0; }
 function cov() { return G.insurances.reduce((m, id) => Math.max(m, (DATA.insurers.find(x => x.id === id) || {}).cov || 0), 0); }
@@ -358,6 +402,7 @@ function addXp(n) {
   n = Math.max(0, Math.floor(num(n, 0)));
   if (!n) return;
   const l0 = level(G.xp); G.xp += n; const l1 = level(G.xp);
+  UI.xpFx(n);
   if (l1 > l0) {
     const bonus = l1 * 100;
     receive(bonus, 'Bonus niveau ' + l1, 'in');
@@ -524,6 +569,19 @@ function tickInner() {
   if (W.hCac.length > 120) { W.hCac.shift(); W.hImmo.shift(); W.hConso.shift(); }
   if (W.t % 4 === 0) W.biz.forEach(b => { b.sante = clamp(b.sante + rnd(-1.4, 1.5), 20, 100); });
   if (W.t % 45 === 0) UI.buildTicker();
+
+  /* marché des courses : prix dynamiques (promos / tensions) */
+  if (!G.market || !G.market.until || now > G.market.until) {
+    rollMarket();
+    if (W.t > 5) UI.feed('<b>Marché :</b> les prix des courses viennent d’être mis à jour.');
+  }
+  /* usure des voitures */
+  if (W.t % 3 === 0) G.cars.forEach(i => {
+    G.carState[i] = clamp(num(G.carState[i], 100, 0, 100) - (0.05 + (G.jobs.length ? 0.03 : 0)), 5, 100);
+  });
+  /* historique de solde (graphiques) */
+  G.histBal.push(balance());
+  if (G.histBal.length > 120) G.histBal.shift();
 
   /* événements */
   if (now >= G.nextEvent) { G.nextEvent = now + rnd(100, 280) * 1000; fireEvent(); }
@@ -728,13 +786,21 @@ const A = {
     else UI.render(true);
   },
   setBankAmt(d) {
+    if (!G) return;
     const isLoan = d.of === 'loan';
     const inp = document.getElementById(isLoan ? 'loanAmt' : 'bankAmt');
-    if (!inp || !G) return;
+    if (!inp) return;
     let v = 0;
-    if (d.v === 'max') v = Math.max(0, Math.floor(Math.min(G.cash, G.bank.compte)));
-    else v = Math.floor(num(d.v, 0, 0, 1e9));
-    inp.value = v > 0 ? v : '';
+    if (d.v === 'max') {
+      if (d.of === 'cash') v = G.cash;
+      else if (d.of === 'compte') v = G.bank.compte;
+      else if (d.of === 'livretCap') v = Math.max(0, Math.min(G.bank.compte, 22950 - G.bank.livret));
+      else if (d.of === 'livret') v = G.bank.livret;
+      else v = Math.max(0, Math.min(G.cash, G.bank.compte));
+      v = Math.floor(v * 100) / 100;
+    } else v = Math.floor(num(d.v, 0, 0, 1e9));
+    inp.value = v > 0 ? String(v).replace('.', ',') : '';
+    inp.focus();
     FX.sound('click');
   },
   journalF(d) { T.journalF = d.f || 'all'; FX.sound('click'); refresh(); },
@@ -755,13 +821,14 @@ const A = {
   buyFood(d) {
     const f = foodById(d.id); if (!f) return;
     const q = clamp(Math.floor(num(d.q, 1, 1, 99)), 1, 99);
-    const cost = +(f.p * q).toFixed(2);
-    if (balance() < cost) return UI.toast('Solde insuffisant.', 'bad'), FX.sound('error');
+    const unit = effPrice(f);
+    const cost = +(unit * q).toFixed(2);
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Solde insuffisant : ' + eur(cost) + ' requis.', 'bad'); }
     pay(cost, 'Courses — ' + f.n + (q > 1 ? ' ×' + q : ''), 'food'); G.stats.spent += cost;
     G.inv[d.id] = (G.inv[d.id] || 0) + q;
     mission('shop', q); addXp(2 * q);
     FX.sound('buy');
-    UI.toast(f.ico + ' ' + f.n + (q > 1 ? ' ×' + q : '') + ' acheté' + (q > 1 ? 's' : ''), 'good');
+    UI.toast(f.ico + ' ' + f.n + (q > 1 ? ' ×' + q : '') + ' acheté' + (q > 1 ? 's' : '') + ' (−' + eur(cost) + ')', 'good');
     refresh();
   },
   eat(d, el) {
@@ -1039,10 +1106,60 @@ const A = {
   sellCar(d) {
     const i = idxOk(d.i, DATA.cars.length); if (i < 0 || !G.cars.includes(i)) return;
     const c = DATA.cars[i];
+    const st = carState(i);
+    const prix = Math.round(c.p * 0.6 * (0.55 + 0.45 * st / 100));
     G.cars = G.cars.filter(x => x !== i);
-    receive(c.p * 0.6, 'Revente — ' + c.n, 'in');
+    delete G.carState[i];
+    receive(prix, 'Revente — ' + c.n, 'in');
     FX.sound('cash');
-    UI.toast(c.n + ' revendue +' + eur(c.p * 0.6), 'good'); refresh();
+    UI.toast(c.n + ' revendue +' + eur(prix) + ' (état ' + Math.round(st) + ' %)', 'good'); refresh();
+  },
+  serviceCar(d) {
+    const i = idxOk(d.i, DATA.cars.length); if (i < 0 || !G.cars.includes(i)) return;
+    const c = DATA.cars[i];
+    const st = carState(i);
+    if (st >= 99) return UI.toast('Véhicule déjà en parfait état.', 'warn');
+    const cost = Math.max(120, Math.round(c.p * 0.006 * (1 - st / 100) * 4) + 120);
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Révision à ' + eur(cost) + ' : solde insuffisant.', 'bad'); }
+    pay(cost, 'Révision — ' + c.n, 'out');
+    G.carState[i] = 100;
+    FX.sound('craft');
+    UI.toast('🔧 ' + c.n + ' révisée : état 100 % (−' + eur(cost) + ')', 'good');
+    refresh();
+  },
+  sport() {
+    const now = Date.now();
+    if (now < num(G.sportCd, 0)) return UI.toast('Reprenez votre souffle : encore ' + Math.ceil((num(G.sportCd, 0) - now) / 1000) + ' s.', 'warn');
+    G.sportCd = now + 90000;
+    G.vitals.sante = clamp(G.vitals.sante + 4, 0, 100);
+    G.vitals.faim = Math.max(0, G.vitals.faim - 4);
+    G.vitals.soif = Math.max(0, G.vitals.soif - 4);
+    UI.pulseVital('rowSante');
+    UI.floatText('+4 Santé', 'var(--green)');
+    FX.sound('craft');
+    addXp(3);
+    UI.toast('🏃 Séance de sport : +4 santé (faim/soif −4)', 'good');
+    refresh();
+  },
+  negotiate(d) {
+    const i = idxOk(d.i, G.jobs.length); if (i < 0) return;
+    const j = G.jobs[i];
+    const now = Date.now();
+    if (now < num(j.negAt, 0)) return UI.toast('Votre employeur refuse de renégocier avant ' + Math.ceil((num(j.negAt, 0) - now) / 1000) + ' s.', 'warn');
+    const chance = 0.30 + 0.06 * skillLvl('s_rep') + Math.min(0.25, num(j.mins, 0) / 2400);
+    if (Math.random() < chance) {
+      const old = j.h;
+      j.h = +(j.h * 1.08).toFixed(2);
+      j.negAt = now + 300000;
+      UI.confetti(); FX.sound('win');
+      UI.toast('💼 Négociation réussie : ' + eur(old) + ' → ' + eur(j.h) + ' brut/h !', 'good');
+      addXp(10);
+    } else {
+      j.negAt = now + 120000;
+      FX.sound('back');
+      UI.toast('Refus de l’employeur. Retentez dans 2 min (' + Math.round(chance * 100) + ' % de chances).', 'warn');
+    }
+    UI.updateTop(); refresh();
   },
 
   openBank(d) {
@@ -1071,43 +1188,46 @@ const A = {
     save(); refresh();
   },
   bankDetails(d) { UI.bankDetails(d); },
+  _amt() { return Math.round(parseAmount(((document.getElementById('bankAmt') || {}).value)) * 100) / 100; },
   deposit() {
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
-    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
-    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
-    if (G.cash < v) { FX.sound('error'); return UI.toast('Liquidités insuffisantes (' + eur(G.cash) + ').', 'bad'); }
+    const v = A._amt();
+    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 150 ou 150,50).', 'bad'); }
+    if (G.cash < v) { FX.sound('error'); return UI.toast('Liquidités insuffisantes : ' + eur(G.cash) + ' en poche.', 'bad'); }
     G.cash -= v; G.bank.compte += v; pushJ('Dépôt espèces', v, 'bank');
     UI.cardFx('Dépôt sur compte', '+' + eur(v)); FX.sound('cash'); refresh();
   },
   withdraw() {
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
-    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
-    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
-    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant.', 'bad'); }
+    const v = A._amt();
+    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 150 ou 150,50).', 'bad'); }
+    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant : ' + eur(G.bank.compte) + ' disponibles.', 'bad'); }
     G.bank.compte -= v; G.cash += v; pushJ('Retrait espèces', -v, 'bank');
     UI.cardFx('Retrait espèces', '−' + eur(v)); FX.sound('cash'); refresh();
   },
   toLivret() {
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
-    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
-    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
-    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant.', 'bad'); }
-    if (G.bank.livret + v > 22950) return UI.toast('Plafond Livret A : 22 950 €.', 'warn');
+    const v = A._amt();
+    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 500).', 'bad'); }
+    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant : ' + eur(G.bank.compte) + ' disponibles.', 'bad'); }
+    if (G.bank.livret + v > 22950) { FX.sound('error'); return UI.toast('Plafond Livret A dépassé : place restante ' + eur(Math.max(0, 22950 - G.bank.livret)) + '.', 'warn'); }
     G.bank.compte -= v; G.bank.livret += v; pushJ('Compte → Livret A', -v, 'bank');
-    UI.cardFx('Vers Livret A', '−' + eur(v)); FX.sound('cash'); refresh();
+    UI.cardFx('Vers Livret A', '−' + eur(v)); FX.sound('cash');
+    UI.toast('🏦 ' + eur(v) + ' placés sur le Livret A (' + bankRate() + ' %/an)', 'good');
+    refresh();
   },
   fromLivret() {
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
-    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
-    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
-    if (G.bank.livret < v) { FX.sound('error'); return UI.toast('Livret A insuffisant.', 'bad'); }
+    const v = A._amt();
+    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 500).', 'bad'); }
+    if (G.bank.livret < v) { FX.sound('error'); return UI.toast('Livret A insuffisant : ' + eur(G.bank.livret) + ' disponibles.', 'bad'); }
     G.bank.livret -= v; G.bank.compte += v; pushJ('Livret A → compte', v, 'bank');
     UI.cardFx('Livret A → compte', '+' + eur(v)); FX.sound('cash'); refresh();
   },
   loanTake(d) {
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
-    const v = Math.floor(num(((document.getElementById('loanAmt') || {}).value), 0));
-    if (!(v >= 1000)) return UI.toast('Minimum : 1 000 €.', 'bad');
+    const v = Math.floor(parseAmount(((document.getElementById('loanAmt') || {}).value)));
+    if (!(v >= 1000)) return UI.toast('Minimum : 1 000 € (ex : 10000).', 'bad');
     if (v > 5e6) return UI.toast('Maximum : 5 000 000 €.', 'warn');
     const L = DATA.loans.find(x => x.id === d.t); if (!L) return;
     if (G.bank.loans.length >= 6) return UI.toast('Maximum 6 crédits en cours.', 'warn');
@@ -1336,7 +1456,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate'];
 
 /* ── sauvegarde ── */
 let saveInFlight = false;

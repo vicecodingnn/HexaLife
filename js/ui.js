@@ -83,13 +83,22 @@ const UI = (() => {
     feedItems = feedItems.slice(0, 40);
     if (T.tab === 'economie' || T.tab === 'vie') renderFeedZone();
   }
-  function floatText(txt, color) {
+  function floatText(txt, color, anchor) {
     const d = document.createElement('div');
     d.className = 'float-txt'; d.style.color = color; d.textContent = txt;
-    const v = document.querySelector('.vitals');
-    if (v) { const r = v.getBoundingClientRect(); d.style.left = (r.left + 30 + Math.random() * 60) + 'px'; d.style.top = (r.top - 10) + 'px'; d.style.bottom = 'auto'; }
+    const a = anchor || document.querySelector('.vitals');
+    if (a) { const r = a.getBoundingClientRect(); d.style.left = (r.left + 20 + Math.random() * Math.max(30, r.width - 60)) + 'px'; d.style.top = (r.top - 12) + 'px'; d.style.bottom = 'auto'; }
     document.body.appendChild(d);
     setTimeout(() => d.remove(), 1300);
+  }
+  let xpLast = 0, xpAgg = 0;
+  function xpFx(n) {
+    xpAgg += n;
+    const now = Date.now();
+    if (now - xpLast < 800) return;
+    xpLast = now;
+    const v = xpAgg; xpAgg = 0;
+    floatText('+' + v + ' XP', 'var(--gold)', document.querySelector('.tb-lvl'));
   }
   function pulseVital(rowId) { const r = el(rowId); if (!r) return; r.classList.remove('pulse'); void r.offsetWidth; r.classList.add('pulse'); }
 
@@ -421,6 +430,8 @@ const UI = (() => {
     if (T.tab === 'economie') { drawCharts(); loadLeaderboard(); }
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && (T.bizTab === 'overview' || T.bizTab === 'compta'))
       FX.chart(el('bChart'), G.biz[T.selBiz].hist, 'rgb(232,176,75)');
+    if (T.tab === 'banque' && G) FX.chart(el('chBal'), (G.histBal || []).slice(-90), 'rgb(84,163,216)');
+    if (T.tab === 'immobilier' && W) FX.chart(el('chImmoLocal'), (W.hImmo || []).slice(-70), 'rgb(75,179,128)');
     if (T.tab === 'banque') loadPlayerBanks();
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && G.biz[T.selBiz].type === 'banque') loadExtClients();
     if (T.tab === 'profil') T.achNew = 0;
@@ -488,7 +499,7 @@ const UI = (() => {
     if (!G.bank.bankId) return toast('Ouvrez d’abord un compte bancaire.', 'warn');
     modal('<h2>💸 Envoyer de l’argent</h2><div class="m-sub">Transfert instantané entre joueurs (mode serveur).</div>' +
       '<label class="m-field">Pseudo du destinataire<input id="smTo" class="mini m-wide" maxlength="20" placeholder="Pseudo"></label>' +
-      '<label class="m-field">Montant (€)<input id="smAmt" class="mini m-wide" type="number" min="1" placeholder="100"></label>' +
+      '<label class="m-field">Montant (€)<input id="smAmt" class="mini m-wide" type="text" inputmode="decimal" placeholder="100"></label>' +
       '<div class="m-hint">Solde disponible : <b class="money">' + eur(balance()) + '</b></div>' +
       '<div id="smOnline" style="margin-top:12px"><div class="det">Joueurs en ligne : chargement…</div></div>' +
       '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Annuler</button>' +
@@ -503,9 +514,9 @@ const UI = (() => {
   }
   function doSendMoney() {
     const to = ((el('smTo') || {}).value || '').trim();
-    const amount = Math.floor(+((el('smAmt') || {}).value || 0));
+    const amount = Math.floor(parseAmount(((el('smAmt') || {}).value)));
     if (!to) return toast('Entrez un pseudo.', 'warn');
-    if (!(amount > 0)) return toast('Montant invalide.', 'warn');
+    if (!(amount > 0)) return toast('Montant invalide (ex : 100 ou 100,50).', 'warn');
     if (amount > balance()) return toast('Solde insuffisant.', 'bad');
     DB.authFetch('/api/transfer', { method: 'POST', body: JSON.stringify({ to, amount }) }).then(j => {
       if (j && j.ok) {
@@ -680,10 +691,11 @@ const UI = (() => {
 
   function rInv() {
     const entries = Object.entries(G.inv).filter(([id, q]) => q > 0 && foodById(id));
+    const total = entries.reduce((a, [id, q]) => a + effPrice(foodById(id)) * q, 0);
     if (!entries.length) return '<h1>Inventaire</h1><div class="sub">Votre sac est vide.</div>' +
       '<div class="panel empty-big"><div class="empty-ico">🎒</div><p class="empty">Rien à consommer pour l’instant.</p>' +
       '<button class="btn btn-primary" data-act="tab" data-id="marche">Aller aux courses</button></div>';
-    return '<h1>Inventaire</h1><div class="sub">Cliquez « Consommer » pour manger ou boire. Au-delà de 100 de faim, risque de trouble alimentaire.</div>' +
+    return '<h1>Inventaire</h1><div class="sub"><span class="chip gold">' + entries.reduce((a, [, q]) => a + q, 0) + ' article(s)</span> <span class="chip">valeur ' + eur(total) + '</span> — cliquez « Consommer » pour manger ou boire. Au-delà de 100 de faim : risque de trouble alimentaire.</div>' +
       '<div class="inv-grid">' + entries.map(([id, q], k) => {
         const f = foodById(id);
         return '<div class="inv-card" style="animation-delay:' + (k * 0.04) + 's"><span class="qty">×' + q + '</span><div class="inv-ico">' + f.ico + '</div>' +
@@ -693,20 +705,30 @@ const UI = (() => {
   }
 
   function rMarche() {
-    return '<h1>Courses</h1><div class="sub">Prix TTC, débités du compte (ou du liquide). Les achats partent dans l’Inventaire.</div><div class="panel">' +
-      DATA.foods.map((f, k) => '<div class="rowline" style="animation:panelIn .4s ' + (k * 0.03) + 's both"><div style="display:flex;align-items:center;gap:12px"><span class="food-ico">' + f.ico + '</span><div><div class="lbl">' + esc(f.n) + '</div>' +
-      '<div class="det">' + (f.f ? '<span class="' + (f.f > 0 ? 'pos' : 'negx') + '">faim ' + (f.f > 0 ? '+' : '') + f.f + '</span>' : '') + (f.f && f.s ? ' · ' : '') + (f.s ? '<span class="' + (f.s > 0 ? 'posb' : 'negx') + '">soif ' + (f.s > 0 ? '+' : '') + f.s + '</span>' : '') + ' · en sac : <b>' + (G.inv[f.id] || 0) + '</b></div></div></div>' +
-      '<div class="buy-zone"><span class="money">' + eur(f.p) + '</span>' +
-      '<button class="btn btn-sm btn-primary" data-act="buyFood" data-id="' + f.id + '" data-q="1">Acheter</button>' +
-      '<button class="btn btn-sm" data-act="buyFood" data-id="' + f.id + '" data-q="5" title="Acheter 5">×5</button></div></div>').join('') + '</div>';
+    return '<h1>Courses</h1><div class="sub">Prix du marché mis à jour toutes les ~2 min : guettez les <span class="chip green">PROMO</span> et évitez les <span class="chip red">tensions</span>. Achats par 1 ou par 5.</div><div class="panel">' +
+      DATA.foods.map((f, k) => {
+        const p = effPrice(f);
+        const ratio = p / f.p;
+        const tag = ratio <= 0.9 ? '<span class="chip green price-tag">PROMO −' + Math.round((1 - ratio) * 100) + ' %</span>'
+          : ratio >= 1.12 ? '<span class="chip red price-tag">+' + Math.round((ratio - 1) * 100) + ' %</span>' : '';
+        return '<div class="rowline" style="animation:panelIn .4s ' + (k * 0.03) + 's both"><div style="display:flex;align-items:center;gap:12px"><span class="food-ico">' + f.ico + '</span><div><div class="lbl">' + esc(f.n) + ' ' + tag + '</div>' +
+        '<div class="det">' + (f.f ? '<span class="' + (f.f > 0 ? 'pos' : 'negx') + '">faim ' + (f.f > 0 ? '+' : '') + f.f + '</span>' : '') + (f.f && f.s ? ' · ' : '') + (f.s ? '<span class="' + (f.s > 0 ? 'posb' : 'negx') + '">soif ' + (f.s > 0 ? '+' : '') + f.s + '</span>' : '') + ' · en sac : <b>' + (G.inv[f.id] || 0) + '</b></div></div></div>' +
+        '<div class="buy-zone">' + (ratio <= 0.9 || ratio >= 1.12 ? '<span class="price-old">' + eur(f.p) + '</span>' : '') + '<span class="money">' + eur(p) + '</span>' +
+        '<button class="btn btn-sm btn-primary" data-act="buyFood" data-id="' + f.id + '" data-q="1">Acheter</button>' +
+        '<button class="btn btn-sm" data-act="buyFood" data-id="' + f.id + '" data-q="5" title="Acheter 5 d’un coup">×5</button></div></div>';
+      }).join('') + '</div>';
   }
 
   function rCarriere() {
     const mine = G.jobs.length ? G.jobs.map((j, i) => {
       const comp = DATA.companies[j.c] || { n: 'Entreprise' };
-      return '<div class="rowline"><div><div class="lbl">' + esc(j.title) + ' — ' + esc(comp.n) + '</div>' +
-      '<div class="det">' + eur(j.h) + ' brut/h · ' + (j.mode === 'plein' ? 'temps plein' : 'temps partiel') + ' · net ≈ <b class="money">' + eur(jobNetHourly(j.h, j.mode)) + '/h</b> · depuis ' + Math.floor(num(j.mins, 0) / 60) + ' h' + (j.promo ? ' · <span class="chip gold">+6 % promo</span>' : '') + '</div></div>' +
-      '<button class="btn btn-sm btn-danger" data-act="quitJob" data-i="' + i + '">Quitter</button></div>';
+      const negCd = num(j.negAt, 0) > Date.now();
+      return '<div class="rowline"><div style="flex:1"><div class="lbl">' + esc(j.title) + ' — ' + esc(comp.n) + '</div>' +
+      '<div class="det">' + eur(j.h) + ' brut/h · ' + (j.mode === 'plein' ? 'temps plein' : 'temps partiel') + ' · net ≈ <b class="money">' + eur(jobNetHourly(j.h, j.mode)) + '/h</b> · ⏱ ' + Math.floor(num(j.mins, 0) / 60) + ' h de service' + (j.promo ? ' · <span class="chip gold">+6 % promo</span>' : '') + '</div></div>' +
+      '<div class="btn-row">' + (negCd
+        ? '<span class="cd chip" data-until="' + num(j.negAt, 0) + '">négociation…</span>'
+        : '<button class="btn btn-sm" data-act="negotiate" data-i="' + i + '" title="Demander une augmentation (chances selon charisme et ancienneté)">💼 Négocier</button>') +
+      '<button class="btn btn-sm btn-danger" data-act="quitJob" data-i="' + i + '">Quitter</button></div></div>';
     }).join('') : '<div class="empty">Aucun poste. Signez votre premier contrat !</div>';
     const loadPct = Math.round(totalLoad() * 100);
     const secs = [''].concat([...new Set(DATA.companies.map(c => c.sec))]);
@@ -753,7 +775,7 @@ const UI = (() => {
     const owned = G.biz.length ? '<div class="biz-grid">' + G.biz.map((b, i) => {
       const bt = DATA.bizTypes[b.type] || { label: b.type };
       const lastRev = (b.hist || []).slice(-20).reduce((a, x) => a + x, 0);
-      return '<div class="panel biz-card" data-act="selBiz" data-i="' + i + '" style="animation-delay:' + (i * 0.05) + 's" role="button" tabindex="0">' +
+      return '<div class="panel biz-card' + (b.boostUntil > Date.now() || b.promoUntil > Date.now() ? ' boosted' : '') + '" data-act="selBiz" data-i="' + i + '" style="animation-delay:' + (i * 0.05) + 's" role="button" tabindex="0">' +
         '<div class="biz-top"><h2 style="border:0;padding:0;margin:0">' + esc(b.name) + '</h2><span class="chip gold">' + esc(bt.label) + '</span></div>' +
         '<div class="biz-stats"><div><span class="det">Réputation</span><div class="bar b-gold biz-bar"><div class="fill" style="width:' + b.rep + '%"></div></div><span class="mono mini-num">' + Math.round(b.rep) + '</span></div>' +
         '<div class="biz-kpis"><span title="CA cumulé">CA <b class="money">' + kfmt(b.rev) + '</b></span><span title="Salariés">👥 <b>' + b.emps.length + '</b></span><span title="Revenu 20 s">⚡ <b class="money">' + eur(lastRev) + '</b></span></div></div>' +
@@ -791,6 +813,13 @@ const UI = (() => {
     return s;
   }
 
+  function priceAdvice(b, p) {
+    const ref = p.ref || p.cost || 1;
+    const r = (b.prices[p.id] || ref) / ref;
+    if (r < 0.95) return '<span class="chip green">📈 sous le marché : forte demande</span>';
+    if (r > 1.1) return '<span class="chip red">📉 au-dessus du marché : clients rebutés</span>';
+    return '<span class="chip green">✓ prix optimal</span>';
+  }
   function rBizDetail(b, i) {
     let body = '';
     const bt = DATA.bizTypes[b.type] || {};
@@ -822,13 +851,13 @@ const UI = (() => {
           Object.entries(DATA.bizTypes.boulangerie.mats).map(([id, m]) => '<div class="rowline"><div><div class="lbl">' + esc(m.n) + '</div><div class="det">Stock : <b class="mono">' + Math.floor(b.mats[id] || 0) + '</b> · ' + eur(m.p) + '/unité</div></div><div class="btn-row"><button class="btn btn-sm" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="50">+50</button></div></div>').join('') +
           '<h3>Recettes & production</h3>' + DATA.bizTypes.boulangerie.prods.map(p => {
             const ing = Object.entries(p.in).map(([m, q]) => q + '× ' + DATA.bizTypes.boulangerie.mats[m].n).join(', ');
-            return '<div class="rowline"><div><div class="lbl">' + esc(p.n) + '</div><div class="det">' + esc(ing) + ' · stock <b class="mono">' + Math.floor(b.stock[p.id] || 0) + '</b> · vendus ' + Math.floor(b.counters[p.id] || 0) + '</div></div>' +
-            '<div class="btn-row"><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="1">×1</button><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="10">×10</button>' +
+            return '<div class="rowline"><div><div class="lbl">' + esc(p.n) + ' ' + priceAdvice(b, p) + '</div><div class="det">' + esc(ing) + ' · stock <b class="mono">' + Math.floor(b.stock[p.id] || 0) + '</b> · vendus ' + Math.floor(b.counters[p.id] || 0) + '</div></div>' +
+          '<div class="btn-row"><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="1">×1</button><button class="btn btn-sm" data-act="craft" data-b="' + i + '" data-p="' + p.id + '" data-q="10">×10</button>' +
             '<span class="price-ctl"><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></span></div></div>';
           }).join('');
       } else if (b.type === 'magasin') {
         body = '<div class="biz-chips">' + (perk(b, 'autoRestock') ? '<span class="chip green">Réassort automatique actif</span>' : '<span class="chip">Réassort manuel</span>') + '</div>' +
-          '<h3>Rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + esc(p.n) + '</div><div class="det">Grossiste ' + eur(p.cost) + ' · stock <b class="mono">' + Math.floor(b.stock[p.id] || 0) + '</b> · vendus ' + Math.floor(b.counters[p.id] || 0) + '</div></div>' +
+          '<h3>Rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + esc(p.n) + ' ' + priceAdvice(b, p) + '</div><div class="det">Grossiste ' + eur(p.cost) + ' · stock <b class="mono">' + Math.floor(b.stock[p.id] || 0) + '</b> · vendus ' + Math.floor(b.counters[p.id] || 0) + '</div></div>' +
           '<div class="btn-row"><button class="btn btn-sm" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="50">+50</button>' +
           '<span class="price-ctl"><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></span></div></div>').join('');
       } else body = '<div class="empty">Pas de production pour ce type d’entreprise.</div>';
@@ -896,11 +925,18 @@ const UI = (() => {
       '<div class="kpi"><div class="k-lbl">Liquide (poche)</div><div class="k-val">' + eur(G.cash) + '</div></div></div>' +
       '<div class="kpi" style="margin-top:12px"><div class="k-lbl">Prélèvements mensuels (60 s)</div>' +
       (prelev.length ? prelev.map(([l, m]) => '<div class="rowline thin"><div class="lbl sm">' + esc(l) + '</div><span class="money neg">−' + eur(m) + '</span></div>').join('') : '<div class="empty">Aucun prélèvement.</div>') + '</div></div></div>' +
-      '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Mouvements</h2>' +
-      '<label class="m-field">Montant (€)<div class="btn-row" style="margin-top:6px"><input type="number" class="mini amt-input" id="bankAmt" placeholder="0" min="1">' +
-      '<button class="btn btn-sm" data-act="setBankAmt" data-v="100" data-of="none">+100</button><button class="btn btn-sm" data-act="setBankAmt" data-v="500" data-of="none">+500</button><button class="btn btn-sm" data-act="setBankAmt" data-v="max" data-of="compte">Max</button></div></label>' +
-      '<div class="btn-row" style="margin-top:10px;flex-wrap:wrap"><button class="btn" data-act="deposit">Liquide → compte</button><button class="btn" data-act="withdraw">Compte → liquide</button><button class="btn btn-primary" data-act="toLivret">→ Livret A</button><button class="btn btn-primary" data-act="fromLivret">Livret A →</button></div></div>' +
-      '<div class="panel"><h2>Crédits</h2><label class="m-field">Montant du crédit (€)<div class="btn-row" style="margin-top:6px"><input type="number" class="mini amt-input" id="loanAmt" placeholder="10 000" min="1000">' +
+      '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Mouvements internes</h2>' +
+      '<label class="m-field">Montant (€) — virgule acceptée<div class="btn-row" style="margin-top:6px"><input type="text" inputmode="decimal" class="mini amt-input" id="bankAmt" placeholder="0,00" autocomplete="off">' +
+      '<button class="btn btn-sm" data-act="setBankAmt" data-v="100">+100</button><button class="btn btn-sm" data-act="setBankAmt" data-v="500">+500</button><button class="btn btn-sm" data-act="setBankAmt" data-v="1000">+1000</button></div></label>' +
+      '<div class="tr-grid">' +
+      trRow('🪙 → 🏦', 'Déposer du liquide', 'Poche : ' + eur(G.cash), 'cash', 'deposit', G.cash > 0, 'Liquide → compte') +
+      trRow('🏦 → 🪙', 'Retirer des espèces', 'Compte : ' + eur(G.bank.compte), 'compte', 'withdraw', G.bank.compte > 0, 'Compte → liquide') +
+      trRow('🏦 → 📈', 'Placer sur le Livret A (' + bankRate() + ' %)', 'Compte : ' + eur(G.bank.compte) + ' · place : ' + eur(Math.max(0, 22950 - G.bank.livret)), 'livretCap', 'toLivret', G.bank.compte > 0 && G.bank.livret < 22950, '→ Livret A') +
+      trRow('📈 → ', 'Récupérer du Livret', 'Livret : ' + eur(G.bank.livret), 'livret', 'fromLivret', G.bank.livret > 0, 'Livret A →') +
+      '</div>' +
+      '<h3>Historique de votre solde</h3><canvas class="chart" id="chBal"></canvas>' +
+      '</div>' +
+      '<div class="panel"><h2>Crédits</h2><label class="m-field">Montant du crédit (€)<div class="btn-row" style="margin-top:6px"><input type="text" inputmode="numeric" class="mini amt-input" id="loanAmt" placeholder="10 000" autocomplete="off">' +
       '<button class="btn btn-sm" data-act="setBankAmt" data-v="5000" data-of="loan">5 k€</button><button class="btn btn-sm" data-act="setBankAmt" data-v="50000" data-of="loan">50 k€</button></div></label>' +
       '<div class="btn-row" style="margin-top:10px;flex-wrap:wrap">' + DATA.loans.map(l => '<button class="btn btn-sm" data-act="loanTake" data-t="' + l.id + '">' + l.n + ' · ' + l.rate + ' %</button>').join('') + '</div><h3>En cours</h3>' + loans + '</div></div>' +
       '<div class="panel"><h2>Relevé de compte</h2>' +
@@ -910,6 +946,11 @@ const UI = (() => {
       '<div class="journal-scroll"><table class="t"><tr><th>Heure</th><th>Libellé</th><th style="text-align:right">Montant</th></tr>' + jrn + '</table></div></div>';
   }
   const KIND_ICO = { in: '📥', out: '📤', tax: '🏛', bank: '🏦', biz: '🏪', food: '🥖', ill: '🕶', event: '✦' };
+  function trRow(ico, title, src, of, act, enabled, btnLabel) {
+    return '<div class="tr-row"><div class="tr-ico">' + ico + '</div><div style="flex:1"><div class="lbl sm">' + title + '</div><div class="det">' + src + '</div></div>' +
+      '<button class="btn btn-sm" data-act="setBankAmt" data-v="max" data-of="' + of + '" title="Remplir avec le maximum transférable">Max</button>' +
+      '<button class="btn btn-sm btn-primary" data-act="' + act + '"' + (enabled ? '' : ' disabled') + '>' + btnLabel + '</button></div>';
+  }
   function journalRows(limit) {
     let rows = (G.journal || []).slice();
     if (T.journalF === 'in') rows = rows.filter(j => j.amt >= 0);
@@ -940,8 +981,10 @@ const UI = (() => {
     const owned = G.houses.length ? G.houses.map((h, i) => {
       const hd = DATA.homes[h.i] || { n: 'Bien' };
       const delta = num(h.v, 0) - hd.p;
-      return '<div class="rowline"><div><div class="lbl">' + esc(hd.n) + (h.tenant ? ' <span class="chip green">LOUÉ</span>' : '') + '</div>' +
-        '<div class="det">Valeur <b class="money" data-house-v="' + i + '">' + eur(h.v) + '</b> <span class="' + (delta >= 0 ? 'pos' : 'negx') + '">' + (delta >= 0 ? '+' : '') + eur(delta) + '</span> · charges ' + eur(h.c) + '/mois' + (h.tenant ? ' · loyer +' + eur(h.rent) + '/min' : '') + '</div></div>' +
+      const mois = num(h.rent, 0) * 10;
+      return '<div class="rowline"><div style="flex:1"><div class="lbl">' + esc(hd.n) + (h.tenant ? ' <span class="chip green">LOUÉ</span>' : '') + '</div>' +
+        '<div class="det">Valeur <b class="money" data-house-v="' + i + '">' + eur(h.v) + '</b> <span class="' + (delta >= 0 ? 'pos' : 'negx') + '">' + (delta >= 0 ? '+' : '') + eur(delta) + '</span>' +
+        ' · charges ' + eur(h.c) + '/mois' + (h.tenant ? ' · loyers <span class="pos">+' + eur(mois) + '/mois</span>' : ' · rendement locatif potentiel ' + (hd.p ? (mois * 12 / hd.p * 100).toFixed(1) : '0') + ' %/an') + '</div></div>' +
         '<div class="btn-row"><button class="btn btn-sm" data-act="rentOut" data-i="' + i + '">' + (h.tenant ? 'Congé' : 'Louer') + '</button><button class="btn btn-sm btn-danger" data-act="sellHome" data-i="' + i + '">Vendre</button></div></div>';
     }).join('') : '<div class="empty">Aucun bien. Le patrimoine se construit pas à pas.</div>';
     return '<h1>Immobilier</h1><div class="sub">Les prix évoluent en continu. Louer rapporte, revendre coûte 5 %.</div>' +
@@ -949,12 +992,21 @@ const UI = (() => {
         ? '<div class="panel"><h2>Ma location</h2><div class="rowline"><div><div class="lbl">' + esc(DATA.rentals[G.rental.i].n) + '</div><div class="det">Loyer <b class="money neg">−' + eur(G.rental.loyer) + '</b>/mois — vous protège des intempéries</div></div><button class="btn btn-sm btn-danger" data-act="cancelRent">Résilier le bail</button></div></div>'
         : '<div class="panel"><h2>Se loger</h2><div class="m-hint" style="margin-bottom:10px">⚠ Sans domicile, vos jauges baissent 1,5× plus vite et la pluie/neige abîme votre santé.</div>' + DATA.rentals.map((r, i) => '<div class="rowline"><div><div class="lbl">' + esc(r.n) + '</div><div class="det">Charges comprises</div></div><div class="buy-zone"><span class="money">' + eur(r.loyer) + '/mois</span><button class="btn btn-sm btn-primary" data-act="rentHome" data-i="' + i + '">Signer le bail</button></div></div>').join('') + '</div>') +
       '<div class="panel"><h2>Mon patrimoine</h2>' + owned + '</div>' +
+      '<div class="panel"><h2>Marché immobilier local</h2><canvas class="chart" id="chImmoLocal"></canvas><div class="det" style="margin-top:6px">Indice immo : ' + W.idx.immo.toFixed(1) + ' — les valeurs de vos biens suivent ce marché.</div></div>' +
       '<div class="panel"><h2>Biens en vente</h2>' + DATA.homes.map((h, i) => '<div class="rowline"><div><div class="lbl">' + esc(h.n) + '</div><div class="det">Charges ' + eur(h.c) + '/mois · confort +' + (h.p / 60000).toFixed(1) + '</div></div><div class="buy-zone"><span class="money">' + eur(h.p) + '</span><button class="btn btn-sm btn-primary" data-act="buyHome" data-i="' + i + '"' + (balance() < h.p ? ' disabled' : '') + '>Acheter</button></div></div>').join('') + '</div>';
   }
 
   function rAuto() {
-    return '<h1>Concessionnaire</h1><div class="sub">Une voiture augmente votre productivité (salaire net) jusqu’à +' + Math.round(Math.max(...DATA.cars.map(c => c.b)) * 100) + ' %.</div>' +
-      (G.cars.length ? '<div class="panel"><h2>Mon garage</h2>' + G.cars.map(i => { const c = DATA.cars[i]; if (!c) return ''; return '<div class="rowline"><div><div class="lbl">🚗 ' + esc(c.n) + '</div><div class="det">Bonus productivité appliqué</div></div><div class="buy-zone"><span class="chip green">+' + Math.round(c.b * 100) + ' %</span><button class="btn btn-sm btn-danger" data-act="sellCar" data-i="' + i + '">Revendre (' + eur(c.p * 0.6) + ')</button></div></div>'; }).join('') + '</div>' : '') +
+    return '<h1>Concessionnaire</h1><div class="sub">Une voiture augmente votre productivité jusqu’à +' + Math.round(Math.max(...DATA.cars.map(c => c.b)) * 100) + ' %. Elle s’use en roulant : entretenez-la pour éviter les pannes coûteuses et bien la revendre.</div>' +
+      (G.cars.length ? '<div class="panel"><h2>Mon garage</h2>' + G.cars.map(i => {
+        const c = DATA.cars[i]; if (!c) return '';
+        const st = carState(i);
+        const resale = Math.round(c.p * 0.6 * (0.55 + 0.45 * st / 100));
+        return '<div class="rowline"><div style="flex:1"><div class="lbl">🚗 ' + esc(c.n) + ' <span class="chip ' + (st > 60 ? 'green' : st > 30 ? 'gold' : 'red') + '">état ' + Math.round(st) + ' %</span></div>' +
+          '<div class="bar ' + (st > 60 ? 'b-green' : st > 30 ? 'b-orange' : 'b-red') + ' car-bar"><div class="fill" style="width:' + st + '%"></div></div>' +
+          '<div class="det">Productivité +' + Math.round(c.b * 100) + ' % · revente actuelle : ' + eur(resale) + '</div></div>' +
+          '<div class="btn-row"><button class="btn btn-sm" data-act="serviceCar" data-i="' + i + '"' + (st >= 99 ? ' disabled' : '') + '>🔧 Réviser</button><button class="btn btn-sm btn-danger" data-act="sellCar" data-i="' + i + '">Revendre</button></div></div>';
+      }).join('') + '</div>' : '') +
       '<div class="panel"><h2>Catalogue</h2>' + DATA.cars.map((c, i) => '<div class="rowline"><div><div class="lbl">' + esc(c.n) + '</div><div class="det">Productivité +' + Math.round(c.b * 100) + ' %</div></div><div class="buy-zone"><span class="money">' + eur(c.p) + '</span><button class="btn btn-sm btn-primary" data-act="buyCar" data-i="' + i + '" ' + (G.cars.includes(i) ? 'disabled' : '') + '>' + (G.cars.includes(i) ? 'Possédée ✓' : 'Acheter') + '</button></div></div>').join('') + '</div>';
   }
 
@@ -967,7 +1019,11 @@ const UI = (() => {
       }).join('') + '</div>' +
       '<div class="kpi"><div class="k-lbl">Couverture actuelle</div><div class="k-val" style="color:var(--green);font-size:34px">' + Math.round(cov() * 100) + ' %</div>' +
       '<div class="bar b-green" style="margin:10px 0 0"><div class="fill" style="width:' + (cov() * 100) + '%"></div></div>' +
-      '<div class="det" style="margin-top:10px">Hospitalisation : <b>' + eur(800 * (1 - cov())) + '</b> au lieu de 800 €</div></div></div>';
+      '<div class="det" style="margin-top:10px">Le meilleur taux souscrit s’applique.</div></div>' +
+      '<div class="panel"><h2>Simulateur de remboursement</h2><table class="t"><tr><th>Scénario</th><th>Facture</th><th style="text-align:right">Votre reste à charge</th></tr>' +
+      [['🚑 Hospitalisation', 800], ['🤢 Grippe saisonnière', 135], ['🩺 Consultation généraliste', 30], ['🚗 Panne voiture', 400], ['💉 Vaccin', 50]]
+        .map(([l, c]) => '<tr><td>' + l + '</td><td class="mono">' + eur(c) + '</td><td class="money" style="text-align:right">' + eur(c * (1 - cov())) + '</td></tr>').join('') +
+      '</table><div class="det" style="margin-top:8px">Avec votre couverture actuelle (' + Math.round(cov() * 100) + ' %).</div></div></div>';
   }
 
   function rSante() {
@@ -983,6 +1039,10 @@ const UI = (() => {
       vitalBar('Soif', v.soif, 100, 'b-blue', '◈') +
       '<div class="rowline" style="margin-top:10px"><div class="lbl">Maladie</div>' + (G.health.sick ? '<span class="chip red">🤢 MALADE</span>' : '<span class="chip green">En forme</span>') + '</div>' +
       (G.health.sick ? '<div style="margin-top:12px"><button class="btn btn-primary btn-block btn-pop" data-act="bookAppointment">🩺 Prendre rendez-vous' + (doc ? ' (' + eur(doc.fee * (1 - cov())) + ' après remboursement)' : '') + '</button></div>' : '') +
+      '<div class="rowline" style="margin-top:12px;border:0"><div><div class="lbl">🏃 Séance de sport</div><div class="det">+4 santé · −4 faim · −4 soif · toutes les 90 s</div></div>' +
+      (Date.now() < num(G.sportCd, 0)
+        ? '<span class="cd chip" data-until="' + num(G.sportCd, 0) + '">récupération…</span>'
+        : '<button class="btn btn-sm btn-primary" data-act="sport">Courir</button>') + '</div>' +
       '</div>' +
       '<div class="panel"><h2>Médecin traitant</h2>' + DATA.doctors.map(dd =>
         '<div class="rowline"><div><div class="lbl">' + esc(dd.n) + '</div><div class="det">' + esc(dd.spec) + ' · ' + eur(dd.fee) + '/consultation · qualité ' + Math.round(dd.quality * 100) + ' %</div></div>' +
@@ -1003,6 +1063,7 @@ const UI = (() => {
       '<div class="kpi idx-kpi"><div class="k-lbl">Indice Immo</div><div class="k-val" id="idxImmo">' + W.idx.immo.toFixed(1) + '</div><canvas class="chart" id="chImmo"></canvas></div>' +
       '<div class="kpi idx-kpi"><div class="k-lbl">Indice Conso</div><div class="k-val" id="idxConso">' + W.idx.conso.toFixed(1) + '</div><canvas class="chart" id="chConso"></canvas></div></div>' +
       '<div class="panel" style="margin-top:18px"><h2>Votre performance nette · 90 s</h2><canvas class="chart" id="chNet" style="height:150px"></canvas></div>' +
+      '<div class="panel"><h2>Historique de votre solde</h2><canvas class="chart" id="chBal" style="height:130px"></canvas></div>' +
       '<div class="grid2"><div class="panel"><h2>Classement de la ville</h2><div id="lbZone">' + skeleton(4) + '</div></div>' +
       '<div class="panel"><h2>Journal de la ville</h2><div id="feedZone" class="feed-scroll"></div></div></div>' +
       '<div class="panel"><h2>Santé des entreprises locales</h2><table class="t"><tr><th>Entreprise</th><th>Secteur</th><th style="width:38%">Santé</th></tr>' +
@@ -1099,6 +1160,7 @@ const UI = (() => {
     FX.chart(el('chCac'), (W.hCac || []).slice(-70), 'rgb(84,163,216)', { fast: true });
     FX.chart(el('chImmo'), (W.hImmo || []).slice(-70), 'rgb(75,179,128)', { fast: true });
     FX.chart(el('chConso'), (W.hConso || []).slice(-70), 'rgb(224,135,63)', { fast: true });
+    if (el('chBal') && G) FX.chart(el('chBal'), (G.histBal || []).slice(-90), 'rgb(84,163,216)', { fast: true });
   }
 
   /* ── Comptes à rebours génériques [data-until] ── */
@@ -1222,6 +1284,8 @@ const UI = (() => {
       set('idxCac', W.idx.cac.toFixed(0)); set('idxImmo', W.idx.immo.toFixed(1)); set('idxConso', W.idx.conso.toFixed(1));
       if (W.t % 3 === 0) drawCharts();
     }
+    if (T.tab === 'banque' && W.t % 3 === 0 && el('chBal')) FX.chart(el('chBal'), (G.histBal || []).slice(-90), 'rgb(84,163,216)', { fast: true });
+    if (T.tab === 'immobilier' && W.t % 3 === 0 && el('chImmoLocal')) FX.chart(el('chImmoLocal'), (W.hImmo || []).slice(-70), 'rgb(75,179,128)', { fast: true });
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && (T.bizTab === 'overview' || T.bizTab === 'compta') && W.t % 3 === 0)
       FX.chart(el('bChart'), G.biz[T.selBiz].hist, 'rgb(232,176,75)', { fast: true });
 
@@ -1269,6 +1333,6 @@ const UI = (() => {
     buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails,
     openSendMoney, doSendMoney, openAnnounce, doAnnounce, openAdmin, adminDo,
     openSettings, openHelp, setWeather, reportError, levelUp, achUnlock, eventFx, screenShake,
-    loadLeaderboard
+    loadLeaderboard, xpFx
   };
 })();

@@ -257,9 +257,10 @@ try {
   await mob.screenshot({ path: path.join(SHOTS, '29-mobile-courses.png') });
   await mob.close();
 
-  // vérification finale : aucune erreur runtime non gérée signalée par l'app
-  const internalErr = await page.evaluate(() => document.querySelectorAll('.toast.warn').length);
+  // vérification finale : aucune erreur interne non gérée signalée par l'app
+  const internalErr = await page.evaluate(() => [...document.querySelectorAll('.toast')].filter(t => /erreur interne/i.test(t.textContent)).length);
   console.log('toasts d’erreur interne visibles : ' + internalErr);
+  if (internalErr > 0) errors.push(internalErr + ' toast(s) d’erreur interne');
 } catch (e) {
   errors.push('TEST: ' + (e.stack || e.message));
   await shot('zz-crash').catch(() => {});

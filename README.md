@@ -12,6 +12,35 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### 🩹 v11.1 — correctifs de gameplay & contenu par onglet
+- **Bug racine corrigé** : les valeurs `data-*` du DOM (chaînes) étaient ignorées par le
+  moteur → « ×5 » achetait 1, les boutons ± des prix/taux ne faisaient rien. Tout est
+  désormais coercé + **saisie à virgule française acceptée** (« 150,50 »).
+- **Banque** : panneau « Mouvements internes » repensé — 4 transferts (liquide↔compte,
+  compte↔Livret A) avec solde source affiché, bouton **Max contextuel** par opération,
+  boutons désactivés si source vide, messages d'erreur indiquant le disponible ;
+  **graphique animé de l'historique de solde**.
+- **Courses** : **prix dynamiques du marché** (promos −15/−38 % et tensions +15/35 %,
+  refresh ~2 min) avec badges PROMO/+, prix barré, et achat ×5 fonctionnel.
+- **Emploi** : **négociation salariale** (+8 % brut/h en cas de succès ; chances selon
+  charisme + ancienneté, cooldowns), heures de service affichées.
+- **Auto** : **usure des véhicules** (barre d'état), **révision** payante, revente et
+  pannes indexées sur l'état — plus de panne de voiture sans voiture.
+- **Santé** : **séance de sport** (+4 santé, −4 faim/soif, cooldown 90 s).
+- **Entreprises** : **conseiller de prix** par produit (sous/sur le marché), halo
+  pulsant sur les cartes sous campagne.
+- **Immo** : rendement locatif %/an, plus-values colorées, **graphique du marché immo**.
+- **Assurances** : **simulateur de reste à charge** (hôpital, grippe, consultation…).
+- **Inventaire** : valeur totale du sac + nombre d'articles.
+- **Événements cohérents** : amende stationnement & prime mobilité selon possession de
+  voiture ; 3 nouveaux événements.
+- **Animations** : effet *ripple* au clic, cœur qui bat sur jauges critiques, badges
+  PROMO élastiques, +XP flottant près de la barre de niveau ; correctifs : voiture B de
+  l'intro (hors champ), spinner de chargement centré, overlay NIVEAU au-dessus des modales.
+- **Régressions verrouillées par tests** : 9 scénarios dédiés dans `test/smoke.mjs`
+  (×5, prix, taux, Livret A virgule + Max, négociation, sport, révision, marché, amende).
+
+
 ### 🎬 Animations — beaucoup plus nombreuses, beaucoup plus fines
 - **Moteur canvas dédié (`js/fx.js`)** : météo ambiante (pluie, neige, poussière dorée de
   canicule, braises de chaleur), étoiles scintillantes, confettis à physique réelle

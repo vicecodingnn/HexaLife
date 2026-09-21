@@ -157,7 +157,90 @@ run('actions de base', `
 `);
 await sleep(80);
 
-// ── récompense quotidienne + succès ──
+// ── RÉGRESSIONS v11.1 : chaque bug signalé doit rester corrigé ──
+run('régressions v11.1', `
+  // 1) ×5 doit vraiment acheter 5 (dataset = chaîne de caractères)
+  G.cash = 10000; G.bank.bankId = null; G.inv = {};
+  const fCafe = foodById('cafe');
+  const unit = effPrice(fCafe);
+  const expectCost = +((unit * 5)).toFixed(2);
+  A.buyFood({id:'cafe', q:'5'});
+  if ((G.inv['cafe'] || 0) !== 5) throw new Error('×5 a acheté ' + (G.inv['cafe'] || 0));
+  if (Math.abs((10000 - G.cash) - expectCost) > 0.011) throw new Error('coût ×5 faux : ' + (10000 - G.cash) + ' vs ' + expectCost);
+
+  // 2) priceAdj / bankAdj / craft doivent agir (dataset chaînes)
+  G.biz.push(sanitizeBiz({type:'magasin', name:'T'}));
+  const bi = G.biz.length - 1;
+  const p0 = G.biz[bi].prices['epicerie'];
+  A.priceAdj({b:String(bi), p:'epicerie', v:'0.1'});
+  if (Math.abs(G.biz[bi].prices['epicerie'] - (p0 + 0.1)) > 0.001) throw new Error('priceAdj inopérant');
+  G.biz.push(sanitizeBiz({type:'banque', name:'B'}));
+  const bb = G.biz.length - 1;
+  const t0 = G.biz[bb].tauxCredit;
+  A.bankAdj({b:String(bb), k:'tc', v:'0.5'});
+  if (Math.abs(G.biz[bb].tauxCredit - (t0 + 0.5)) > 0.001) throw new Error('bankAdj inopérant');
+  G.biz.push(sanitizeBiz({type:'boulangerie', name:'F'}));
+  const bo = G.biz.length - 1;
+  G.biz[bo].mats = { farine:50, levure:50 };
+  A.craft({b:String(bo), p:'baguette', q:'10'});
+  if ((G.biz[bo].stock['baguette'] || 0) !== 10) throw new Error('craft ×10 inopérant');
+
+  // 3) Livret A : saisie avec virgule + Max contextuel + aller-retour complet
+  G.bank = { bankId:'ce', bankName:'CE', playerRate:null, compte:2000, livret:0, loans:[] };
+  G.cash = 500;
+  const inp = document.createElement('input'); inp.id = 'bankAmt'; document.body.appendChild(inp);
+  inp.value = '250,50';
+  A.toLivret();
+  if (Math.abs(G.bank.livret - 250.5) > 0.01) throw new Error('toLivret virgule : ' + G.bank.livret);
+  A.setBankAmt({v:'max', of:'livretCap'});
+  A.toLivret();
+  if (G.bank.livret <= 250.5 || G.bank.compte !== 0) throw new Error('Max livretCap inopérant (' + G.bank.livret + '/' + G.bank.compte + ')');
+  A.setBankAmt({v:'max', of:'livret'});
+  A.fromLivret();
+  if (G.bank.livret !== 0 || G.bank.compte <= 0) throw new Error('fromLivret Max inopérant');
+  inp.remove();
+
+  // 4) négociation salariale (succès forcé) + cooldown
+  G.jobs.push({ c:0, o:0, title:'T', h:12, mode:'plein', since:Date.now(), mins:600, promo:false, negAt:0 });
+  const h0 = G.jobs[G.jobs.length - 1].h;
+  const ji = G.jobs.length - 1;
+  const mr = Math.random; Math.random = () => 0.01;
+  A.negotiate({i:String(ji)});
+  Math.random = mr;
+  if (G.jobs[ji].h <= h0) throw new Error('négociation forcée en échec');
+  if (!(G.jobs[ji].negAt > Date.now())) throw new Error('cooldown négociation absent');
+
+  // 5) sport + cooldown
+  G.vitals.sante = 50; G.sportCd = 0;
+  A.sport();
+  if (G.vitals.sante !== 54) throw new Error('sport : ' + G.vitals.sante);
+  if (!(G.sportCd > Date.now())) throw new Error('cooldown sport absent');
+
+  // 6) révision voiture
+  G.cars = [0]; G.carState = { 0: 30 }; G.cash = 100000;
+  A.serviceCar({i:'0'});
+  if (G.carState[0] !== 100) throw new Error('serviceCar : ' + G.carState[0]);
+
+  // 7) marché dynamique présent et cohérent
+  if (!G.market || !G.market.mult || !G.market.mult['baguette']) throw new Error('marché non initialisé');
+  const fb = foodById('baguette');
+  const ep = effPrice(fb);
+  if (!(ep > 0) || Math.abs(ep - +(fb.p * G.market.mult['baguette']).toFixed(2)) > 0.001) throw new Error('effPrice incohérent');
+
+  // 8) amende stationnement impossible sans voiture
+  G.cars = [];
+  const cashAv = balance();
+  for (let i = 0; i < 200; i++) {
+    const pool = DATA.events.filter(e => e.m === 'Amende stationnement' && (!e.ok || e.ok()));
+    if (pool.length) throw new Error('amende stationnement proposée sans voiture');
+  }
+
+  // 9) nettoyage : les sections suivantes repartent d'un état déterministe
+  G.jobs = []; G.biz = []; G.inv = {};
+  G.bank = { bankId:null, bankName:null, playerRate:null, compte:0, livret:0, loans:[] };
+  G.cash = 5e6;
+`);
+await sleep(80);
 run('quotidien', `
   if (!canClaimDaily()) throw new Error('daily devrait être réclamable (nouvelle partie)');
   A.claimDaily();

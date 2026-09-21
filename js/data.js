@@ -285,10 +285,14 @@ const DATA = {
     { t:'good', m:'Parrainage banque', ok:() => !!G.bank.bankId, f(){ const g = rnd(60,180); receive(g, 'Parrainage'); return '+'+eur(g); } },
     { t:'good', m:'Client fidèle pourboire', ok:() => G.biz.length > 0, f(){ const g = rnd(30,200); receive(g, 'Pourboire'); return '+'+eur(g); } },
     { t:'bad', m:'Grippe saisonnière', f(){ if (G.health.vaccines.includes('v_grippe')) return 'évité (vaccin)'; let c = rnd(90,180); c *= (1-cov()); pay(c, 'Frais grippe'); G.health.sick = true; G.vitals.sante -= 10; return '−'+eur(c); } },
-    { t:'bad', m:'Panne voiture', ok:() => G.cars.length > 0, f(){ let c = rnd(200,600); c *= (1-cov()); pay(c, 'Réparation'); return '−'+eur(c); } },
+    { t:'bad', m:'Panne voiture', ok:() => G.cars.length > 0, f(){ const st = worstCarState(); let c = rnd(200,600) * (1.4 - st / 100 * 0.8); c *= (1-cov()); pay(c, 'Réparation'); if (G.cars.length) G.carState[G.cars[0]] = Math.max(5, (G.carState[G.cars[0]] || 100) - 10); return '−'+eur(c); } },
     { t:'bad', m:'Contrôle fiscal', ok:() => G.stats.earned > 5000, f(){ const c = balance()*rnd(0.02,0.05); pay(c, 'Redressement'); G.stats.tax += c; return '−'+eur(c); } },
     { t:'bad', m:'Cambriolage', ok:() => balance() > 500, f(){ const c = balance()*rnd(0.01,0.03); pay(c, 'Vol'); return '−'+eur(c); } },
-    { t:'bad', m:'Amende stationnement', f(){ pay(35, 'Amende'); return '−'+eur(35); } },
+    { t:'bad', m:'Amende stationnement', ok:() => G.cars.length > 0, f(){ pay(35, 'Amende'); return '−'+eur(35); } },
+    /* — ajoutés v11.1 : cohérence & variété — */
+    { t:'bad', m:'Pari en ligne perdu', f(){ const c = rnd(10,60); pay(c, 'Pari perdu'); return '−'+eur(c); } },
+    { t:'good', m:'Prime mobilité douce', ok:() => G.cars.length === 0, f(){ const g = rnd(40,150); receive(g, 'Prime vélo'); return '+'+eur(g); } },
+    { t:'good', m:'Vieille enveloppe retrouvée', f(){ const g = rnd(20,120); receive(g, 'Enveloppe'); return '+'+eur(g); } },
     /* — ajoutés v11 — */
     { t:'bad', m:'Dégât des eaux', ok:() => !!G.rental || G.houses.length > 0, f(){ let c = rnd(150,520); c *= (1-cov()); pay(c, 'Dégât des eaux'); return '−'+eur(c); } },
     { t:'bad', m:'Grève des transports', f(){ G.boost = { type:'toutes', mul:0.85, until: Date.now()+90000, label:'Grève' }; return '×0,85 / 90 s'; } },

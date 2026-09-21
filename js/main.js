@@ -156,13 +156,24 @@
     }
   };
 
-  /* ── délégation globale des clics ── */
+  /* ── délégation globale des clics + effet ripple ── */
   document.addEventListener('click', e => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act;
     if (!A[act]) return;
     e.preventDefault();
+    if (t.classList && t.classList.contains('btn') && !t.disabled) {
+      const r = t.getBoundingClientRect();
+      const s = document.createElement('span');
+      s.className = 'ripple';
+      const size = Math.max(r.width, r.height) * 2.2;
+      s.style.width = s.style.height = size + 'px';
+      s.style.left = (e.clientX - r.left - size / 2) + 'px';
+      s.style.top = (e.clientY - r.top - size / 2) + 'px';
+      t.appendChild(s);
+      setTimeout(() => s.remove(), 620);
+    }
     if (G && GUARDED.includes(act) && inJail()) { FX.sound('error'); return UI.toast('🚔 Impossible : vous êtes en garde à vue. Payez la caution ou patientez.', 'bad'); }
     try { A[act](t.dataset, t); }
     catch (err) { if (window.UI) UI.reportError(err, act); else console.error(err); }
