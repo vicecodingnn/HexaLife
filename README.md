@@ -104,8 +104,11 @@ tout le solo est jouable, seul le multijoueur (transferts, annonces, classement)
 1. **Upstash** : créez une base Redis (plan gratuit), copiez l'**URL REST** et le **token**
    (console Upstash → votre base → onglet REST API).
 2. **Render** : New → **Web Service** → votre dépôt GitHub.
-   - Build command : vide (aucune dépendance) ou `npm install`
-   - Start command : `npm start`
+   - **Root Directory** : vide (racine du dépôt)
+   - **Runtime** : Node
+   - **Build Command** : vide (aucune dépendance) — ou `npm install`, instantané
+   - **Start Command** : `node server/server.js` (strictement équivalent à `npm start`)
+   - **Node version** : épinglée par `.nvmrc` (20) — sinon env var `NODE_VERSION=20`
    - Variables d'environnement : `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
      `ADMIN_NAME` (votre pseudo). `PORT` est injecté par Render.
    - Health check (optionnel) : `/api/health`
