@@ -1,15 +1,25 @@
 {
   "name": "hexalife",
-  "version": "1.0.0",
-  "description": "Simulateur de vie française en temps réel",
+  "version": "11.0.0",
+  "description": "Simulateur de vie française en temps réel — économie, entreprises, banque, succès",
   "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "test": "node test/smoke.mjs && node test/server.test.mjs",
+    "test:client": "node test/smoke.mjs",
+    "test:server": "node test/server.test.mjs",
+    "check": "node --check js/db.js && node --check js/data.js && node --check js/fx.js && node --check js/engine.js && node --check js/ui.js && node --check js/main.js && node --check server/server.js"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["game", "simulation", "economy"],
-  "author": "",
+  "keywords": [
+    "game",
+    "simulation",
+    "economy",
+    "life-sim",
+    "french"
+  ],
+  "author": "vicecodingnn",
   "license": "MIT"
 }

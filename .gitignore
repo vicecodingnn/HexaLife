@@ -1,0 +1,8 @@
+# base de données locale (contient hachés de mots de passe + sauvegardes) — JAMAIS committer
+server/hexalife.db
+server/hexalife.db.tmp
+
+# dépendances & caches
+node_modules/
+*.log
+.DS_Store

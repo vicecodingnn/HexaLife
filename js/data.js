@@ -1,4 +1,8 @@
-/* ═══════════ DONNÉES v8 — sans bourse/crypto/succès, avec santé ═══════════ */
+/* ═══════════ DONNÉES v11 — économie française, succès, récompenses quotidiennes ═══════════
+ * RÈGLE DE COMPATIBILITÉ : ne jamais réordonner ni supprimer les entrées existantes
+ * (companies, cars, homes, foods… sont référencées par indice/id dans les sauvegardes).
+ * Ajouts uniquement, en fin de liste.
+ */
 const DATA = {
   prenoms: ['Léa','Hugo','Emma','Lucas','Chloé','Nathan','Manon','Louis','Camille','Jules','Inès','Tom','Sarah','Théo','Lina','Gabriel','Zoé','Raphaël','Louise','Arthur','Nina','Ethan','Jade','Noah','Alice','Liam','Romane','Sacha','Eva','Mathis','Clara','Adam','Océane','Rayan','Margot','Enzo','Anaïs','Timéo','Juliette','Maxime'],
   noms: ['Martin','Bernard','Dubois','Thomas','Robert','Richard','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','Andre','Mercier','Dupont','Lambert','Bonnet','Francois','Martinez','Legrand','Garnier','Faure','Rousseau','Blanc','Guerin','Muller','Henry','Roussel','Nicolas','Perrin'],
@@ -12,7 +16,10 @@ const DATA = {
     { id:'amf', n:'Certification AMF', cost:2500, dur:150, tier:3, d:'Banque' },
     { id:'carteT', n:'Carte T', cost:4000, dur:150, tier:3, d:'Immobilier' },
     { id:'ec', n:'École de Commerce', cost:8000, dur:210, tier:4, d:'Consulting' },
-    { id:'mf', n:'Master Finance', cost:12000, dur:270, tier:5, d:'Salle de marchés' }
+    { id:'mf', n:'Master Finance', cost:12000, dur:270, tier:5, d:'Salle de marchés' },
+    /* — ajoutés v11 — */
+    { id:'droit', n:'Master Droit', cost:9500, dur:240, tier:4, d:'Notariat & juridique' },
+    { id:'mba', n:'MBA Management', cost:20000, dur:330, tier:5, d:'Direction générale' }
   ],
 
   companies: [
@@ -27,7 +34,10 @@ const DATA = {
     { n:'Agence Immo', sec:'Immobilier', o:[['Agent',21.0,3]] },
     { n:'Cabinet Delacroix', sec:'Conseil', o:[['Consultant',26.0,3],['Manager',39.0,4]] },
     { n:'Renault', sec:'Industrie', o:[['Opérateur',13.8,2],['Ingénieur',32.0,4]] },
-    { n:'Société Générale', sec:'Finance', o:[['Trader',55.0,5],['Risk Manager',44.0,5]] }
+    { n:'Société Générale', sec:'Finance', o:[['Trader',55.0,5],['Risk Manager',44.0,5]] },
+    /* — ajoutées v11 — */
+    { n:'EDF', sec:'Énergie', o:[['Technicien réseau',17.5,2],['Ingénieur production',33.5,4]] },
+    { n:'Maison Lemoine', sec:'Luxe', o:[['Vendeur',14.5,1],['Chef de produit',38.0,5]] }
   ],
 
   foods: [
@@ -39,19 +49,27 @@ const DATA = {
     { id:'sandwich', n:'Sandwich', p:4.60, f:22, s:0, ico:'🥪' },
     { id:'kebab', n:'Kebab-frites', p:9.50, f:34, s:-2, ico:'🌯' },
     { id:'marche', n:'Panier marché', p:14.00, f:42, s:6, ico:'🥕' },
-    { id:'traiteur', n:'Plateau traiteur', p:26.00, f:60, s:10, ico:'🍽️' }
+    { id:'traiteur', n:'Plateau traiteur', p:26.00, f:60, s:10, ico:'🍽️' },
+    /* — ajoutés v11 — */
+    { id:'ramen', n:'Ramen express', p:1.50, f:16, s:4, ico:'🍜' },
+    { id:'pizza', n:'Pizza surgelée', p:3.90, f:26, s:-4, ico:'🍕' },
+    { id:'gastro', n:'Menu gastronomique', p:75.00, f:70, s:14, ico:'🦞' }
   ],
 
   cars: [
     { n:'Dacia Sandero', p:12900, b:.02 }, { n:'Renault Clio', p:19990, b:.04 },
     { n:'Peugeot 208', p:21400, b:.04 }, { n:'Citroën C3', p:20300, b:.04 },
-    { n:'Mégane E-Tech', p:39900, b:.06 }, { n:'Tesla Model 3', p:42990, b:.08 }
+    { n:'Mégane E-Tech', p:39900, b:.06 }, { n:'Tesla Model 3', p:42990, b:.08 },
+    /* — ajoutées v11 — */
+    { n:'Peugeot 3008 Hybride', p:34500, b:.05 }, { n:'Alpine A110', p:76500, b:.10 }
   ],
 
   homes: [
     { n:'Studio St-Étienne', p:68000, c:40 }, { n:'T2 Lyon 7e', p:165000, c:90 },
     { n:'T3 Nantes', p:229000, c:110 }, { n:'Maison Bordeaux', p:315000, c:130 },
-    { n:'Loft Paris 11e', p:520000, c:200 }, { n:'Villa Aix', p:890000, c:350 }
+    { n:'Loft Paris 11e', p:520000, c:200 }, { n:'Villa Aix', p:890000, c:350 },
+    /* — ajoutés v11 — */
+    { n:'Penthouse Neuilly', p:1450000, c:620 }
   ],
 
   rentals: [ { n:'Chambre', loyer:380 }, { n:'Studio', loyer:560 }, { n:'T2', loyer:790 } ],
@@ -158,11 +176,12 @@ const DATA = {
     ]
   },
 
+  /* visuels : type de particules d'ambiance + teinte du ciel */
   weather: [
-    { id:'soleil', n:'Ensoleillé', ico:'☀️', mul:{ boulangerie:1.15, magasin:1.0, immobilier:1.1, banque:1.0 } },
-    { id:'pluie', n:'Pluie', ico:'🌧️', mul:{ boulangerie:0.9, magasin:1.15, immobilier:0.9, banque:1.0 } },
-    { id:'canicule', n:'Canicule', ico:'🌡️', mul:{ boulangerie:0.95, magasin:1.2, immobilier:0.95, banque:1.0 } },
-    { id:'neige', n:'Neige', ico:'❄️', mul:{ boulangerie:0.9, magasin:1.1, immobilier:0.85, banque:1.05 } }
+    { id:'soleil', n:'Ensoleillé', ico:'☀️', vis:'sun', d:'Les terrasses font le plein.', mul:{ boulangerie:1.15, magasin:1.0, immobilier:1.1, banque:1.0 } },
+    { id:'pluie', n:'Pluie', ico:'🌧️', vis:'rain', d:'On consomme à l\'abri.', mul:{ boulangerie:0.9, magasin:1.15, immobilier:0.9, banque:1.0 } },
+    { id:'canicule', n:'Canicule', ico:'🌡️', vis:'heat', d:'Soif accrue, commerces de boisson en hausse.', mul:{ boulangerie:0.95, magasin:1.2, immobilier:0.95, banque:1.0 } },
+    { id:'neige', n:'Neige', ico:'❄️', vis:'snow', d:'Ralentissement général, l\'épargne grimpe.', mul:{ boulangerie:0.9, magasin:1.1, immobilier:0.85, banque:1.05 } }
   ],
 
   skills: [
@@ -210,6 +229,47 @@ const DATA = {
     { id:'q_lotto', n:'Jouer 3 fois', tgt:3, type:'lotto', rew:150, xp:40 }
   ],
 
+  /* — v11 : récompense quotidienne (jour 1 → 7, puis cycle sur le jour 7) — */
+  daily: [
+    { day:1, amt:150, xp:20 }, { day:2, amt:300, xp:30 }, { day:3, amt:500, xp:40 },
+    { day:4, amt:800, xp:50 }, { day:5, amt:1200, xp:60 }, { day:6, amt:2000, xp:80 },
+    { day:7, amt:3500, xp:150 }
+  ],
+
+  /* — v11 : succès. check(G, ctx) avec ctx = helpers moteur — */
+  ach: [
+    { id:'a_tuto', n:'Diplômé de la vie', d:'Terminer le tutoriel', icon:'🎓', xp:20, check:G=>!!G.stats.tutoDone },
+    { id:'a_job', n:'Premier contrat', d:'Signer un premier emploi', icon:'✍️', xp:30, check:G=>G.jobs.length > 0 },
+    { id:'a_dip', n:'Sur les bancs de l\'école', d:'Obtenir un diplôme', icon:'📜', xp:40, check:G=>G.diplomas.length > 0 },
+    { id:'a_dip5', n:'Tête bien pleine', d:'Obtenir 5 diplômes', icon:'🧠', xp:150, check:G=>G.diplomas.length >= 5 },
+    { id:'a_biz', n:'Patron·ne', d:'Fonder une entreprise', icon:'🏪', xp:80, check:G=>G.biz.length > 0 },
+    { id:'a_empire', n:'Empire', d:'Posséder 3 entreprises', icon:'🏙️', xp:200, check:G=>G.biz.length >= 3 },
+    { id:'a_bank', n:'Compte en banque', d:'Ouvrir un compte bancaire', icon:'🏦', xp:30, check:G=>!!G.bank.bankId },
+    { id:'a_bossbank', n:'Ma propre banque', d:'Fonder une banque', icon:'💳', xp:250, check:(G,c)=>G.biz.some(b=>b.type==='banque') },
+    { id:'a_10k', n:'Épargnant', d:'Atteindre 10 000 €', icon:'💶', xp:60, check:(G,c)=>c.balance() >= 10000 },
+    { id:'a_100k', n:'Cent mille', d:'Atteindre 100 000 €', icon:'💰', xp:150, check:(G,c)=>c.balance() >= 100000 },
+    { id:'a_1m', n:'Millionnaire', d:'Atteindre 1 000 000 €', icon:'🤑', xp:400, check:(G,c)=>c.balance() >= 1000000 },
+    { id:'a_home', n:'Chez soi', d:'Acheter un bien immobilier', icon:'🏠', xp:80, check:G=>G.houses.length > 0 },
+    { id:'a_landlord', n:'Rentier', d:'Louer un bien à un locataire', icon:'🔑', xp:100, check:G=>G.houses.some(h=>h.tenant) },
+    { id:'a_car', n:'Permis validé', d:'Acheter une voiture', icon:'🚗', xp:50, check:G=>G.cars.length > 0 },
+    { id:'a_lvl5', n:'Citoyen confirmé', d:'Atteindre le niveau 5', icon:'📈', xp:60, check:(G,c)=>c.level(G.xp) >= 5 },
+    { id:'a_lvl10', n:'Pilier de la ville', d:'Atteindre le niveau 10', icon:'🏅', xp:120, check:(G,c)=>c.level(G.xp) >= 10 },
+    { id:'a_lvl20', n:'Légende locale', d:'Atteindre le niveau 20', icon:'👑', xp:300, check:(G,c)=>c.level(G.xp) >= 20 },
+    { id:'a_lotto', n:'Jour de chance', d:'Gagner au loto', icon:'🍀', xp:40, check:G=>(G.stats.lottoWins||0) > 0 },
+    { id:'a_m5', n:'Défi relevé', d:'Terminer 5 défis', icon:'🎯', xp:60, check:G=>(G.stats.missionsDone||0) >= 5 },
+    { id:'a_m25', n:'Machine à défis', d:'Terminer 25 défis', icon:'🏹', xp:150, check:G=>(G.stats.missionsDone||0) >= 25 },
+    { id:'a_tax', n:'Bon contribuable', d:'Verser 10 000 € d\'impôts', icon:'🏛️', xp:100, check:G=>(G.stats.tax||0) >= 10000 },
+    { id:'a_sales', n:'Fonds de commerce', d:'Réaliser 1 000 ventes', icon:'🧾', xp:120, check:G=>(G.stats.sales||0) >= 1000 },
+    { id:'a_orders', n:'Commandeur', d:'Honorer 10 commandes spéciales', icon:'📦', xp:100, check:G=>(G.stats.orders||0) >= 10 },
+    { id:'a_vac', n:'Carnet de santé à jour', d:'Faire les 3 vaccins', icon:'💉', xp:60, check:G=>G.health.vaccines.length >= 3 },
+    { id:'a_skillmax', n:'Maîtrise', d:'Maxer une compétence', icon:'⚡', xp:120, check:(G,c)=>DATA.skills.some(s=>(G.skills[s.id]||0) >= s.maxLvl) },
+    { id:'a_noir', n:'De l\'autre côté', d:'Débloquer le marché noir', icon:'🕶️', xp:40, check:G=>!!G.ill.unlocked },
+    { id:'a_jail', n:'Garde à vue', d:'Se faire interpeller', icon:'🚔', xp:30, check:G=>!!G.stats.jailed },
+    { id:'a_braq', n:'Braqueur de service', d:'Réussir un braquage', icon:'💥', xp:150, check:G=>(G.stats.braquages||0) > 0 },
+    { id:'a_daily7', n:'Assidu', d:'7 jours de suite en ville', icon:'📅', xp:150, check:G=>(G.daily && G.daily.streak || 0) >= 7 },
+    { id:'a_transfert', n:'Généreux', d:'Envoyer de l\'argent à un joueur', icon:'🤝', xp:50, check:G=>(G.stats.transfersSent||0) > 0 }
+  ],
+
   events: [
     { t:'good', m:'Prime employeur', ok:() => G.jobs.length > 0, f(){ const g = rnd(200,900); receive(g, 'Prime'); return '+'+eur(g); } },
     { t:'good', m:'Remboursement impôts', f(){ const g = rnd(120,420); receive(g, 'Remboursement'); return '+'+eur(g); } },
@@ -218,16 +278,34 @@ const DATA = {
     { t:'good', m:'Buzz réseaux', ok:() => ownsBiz('magasin'), f(){ G.boost = { type:'magasin', mul:1.6, until: Date.now()+90000, label:'Buzz' }; return '×1,6 / 90 s'; } },
     { t:'good', m:'Foire immo', ok:() => ownsBiz('immobilier'), f(){ G.boost = { type:'immobilier', mul:2, until: Date.now()+60000, label:'Foire' }; return '×2 / 60 s'; } },
     { t:'good', m:'Héritage surprise', f(){ const g = rnd(500,3000); receive(g, 'Héritage'); return '+'+eur(g); } },
+    /* — ajoutés v11 — */
+    { t:'good', m:'Heures sup\' majorées', ok:() => G.jobs.length > 0, f(){ const g = rnd(80,320); receive(g, 'Heures sup'); return '+'+eur(g); } },
+    { t:'good', m:'Cashback carte bleue', f(){ const g = rnd(15,90); receive(g, 'Cashback'); return '+'+eur(g); } },
+    { t:'good', m:'Vide-grenier fructueux', f(){ const g = rnd(40,260); receive(g, 'Vide-grenier'); return '+'+eur(g); } },
+    { t:'good', m:'Parrainage banque', ok:() => !!G.bank.bankId, f(){ const g = rnd(60,180); receive(g, 'Parrainage'); return '+'+eur(g); } },
+    { t:'good', m:'Client fidèle pourboire', ok:() => G.biz.length > 0, f(){ const g = rnd(30,200); receive(g, 'Pourboire'); return '+'+eur(g); } },
     { t:'bad', m:'Grippe saisonnière', f(){ if (G.health.vaccines.includes('v_grippe')) return 'évité (vaccin)'; let c = rnd(90,180); c *= (1-cov()); pay(c, 'Frais grippe'); G.health.sick = true; G.vitals.sante -= 10; return '−'+eur(c); } },
     { t:'bad', m:'Panne voiture', ok:() => G.cars.length > 0, f(){ let c = rnd(200,600); c *= (1-cov()); pay(c, 'Réparation'); return '−'+eur(c); } },
     { t:'bad', m:'Contrôle fiscal', ok:() => G.stats.earned > 5000, f(){ const c = balance()*rnd(0.02,0.05); pay(c, 'Redressement'); G.stats.tax += c; return '−'+eur(c); } },
     { t:'bad', m:'Cambriolage', ok:() => balance() > 500, f(){ const c = balance()*rnd(0.01,0.03); pay(c, 'Vol'); return '−'+eur(c); } },
-    { t:'bad', m:'Amende stationnement', f(){ pay(35, 'Amende'); return '−'+eur(35); } }
+    { t:'bad', m:'Amende stationnement', f(){ pay(35, 'Amende'); return '−'+eur(35); } },
+    /* — ajoutés v11 — */
+    { t:'bad', m:'Dégât des eaux', ok:() => !!G.rental || G.houses.length > 0, f(){ let c = rnd(150,520); c *= (1-cov()); pay(c, 'Dégât des eaux'); return '−'+eur(c); } },
+    { t:'bad', m:'Grève des transports', f(){ G.boost = { type:'toutes', mul:0.85, until: Date.now()+90000, label:'Grève' }; return '×0,85 / 90 s'; } },
+    { t:'bad', m:'Coupure d\'électricité', ok:() => G.biz.length > 0, f(){ const c = rnd(60,240); pay(c, 'Pertes coupure'); return '−'+eur(c); } },
+    { t:'bad', m:'Rappel de charges', ok:() => !!G.rental, f(){ const c = rnd(80,260); pay(c, 'Rappel charges'); return '−'+eur(c); } },
+    { t:'bad', m:'Abonnement oublié', f(){ const c = rnd(12,45); pay(c, 'Abonnement'); return '−'+eur(c); } }
   ],
 
   news: [
     'Banque centrale maintient taux', 'Prix beurre hausse', 'Demande logements forte',
     'CAC 40 hésite', 'Record baguettes', 'Immo ancien couleurs',
-    'Pénurie devs : salaires grimpent', 'Épargne française hausse'
+    'Pénurie devs : salaires grimpent', 'Épargne française hausse',
+    /* — ajoutés v11 — */
+    'Le Livret A toujours plébiscité', 'Les artisans recrutent massivement',
+    'Grève annoncée jeudi dans les transports', 'Le marché de l\'occasion explose',
+    'Nouvelle prime rénovation votée', 'Les taux immobiliers se stabilisent',
+    'Boom des commerces de proximité', 'L\'assurance santé renégocie ses tarifs',
+    'Les loyers encadrés dans 3 nouvelles villes', 'Le télétravail dope les déménagements'
   ]
 };

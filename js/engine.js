@@ -1,71 +1,127 @@
-/* ═══════════ MOTEUR v10 — transferts, annonces, admin, animations ═══════════ */
+/* ═══════════ MOTEUR v11 — robuste, succès, quotidien, météo vivante ═══════════
+ * Corrections majeures :
+ *  - sanitize() : fusion profonde sûre (sauvegardes corrompues/anciens formats acceptés)
+ *  - tick() protégé : une exception ne gèle plus la partie
+ *  - tous les indices venant du DOM sont validés (fini les crashs undefined)
+ *  - fireEvent : pool jamais vide
+ *  - ops mailbox appliquées de façon isolée (plus de double-application)
+ * Nouveautés : succès, récompense quotidienne, météo ↔ jauges, caution de garde à vue,
+ *              journal typé, alertes de stock, historique d'indices toujours collecté.
+ */
 let G = null, W = null, TICK_TIMER = null;
-const T = { cashDisp: 0, cashInit: false, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview', offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0, jobF: { sec:'', q:'', ok:false }, qT: null, netSign: 0, isAdmin: false };
+const T = {
+  cashDisp: 0, cashInit: false, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview',
+  offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0,
+  jobF: { sec: '', q: '', ok: false }, qT: null, netSign: 0, isAdmin: false,
+  journalF: 'all', lastErr: {}, lastStockAlert: 0
+};
+const SAVE_V = 11;
 
-const eur = n => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits:2 }).format(n || 0);
-const eur0 = n => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR', maximumFractionDigits:0 }).format(n || 0);
-const kfmt = n => Math.abs(n) >= 1e6 ? (n/1e6).toFixed(2)+' M€' : Math.abs(n) >= 1e4 ? (n/1e3).toFixed(1)+' k€' : eur(n);
-const rnd = (a,b) => a + Math.random()*(b-a);
-const irnd = (a,b) => Math.floor(rnd(a,b+1));
-const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* ── utilitaires ── */
+const eur = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(typeof n === 'number' && isFinite(n) ? n : 0);
+const eur0 = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(typeof n === 'number' && isFinite(n) ? n : 0);
+const kfmt = n => Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + ' M€' : Math.abs(n) >= 1e4 ? (n / 1e3).toFixed(1) + ' k€' : eur(n);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const irnd = (a, b) => Math.floor(rnd(a, b + 1));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const foodById = id => DATA.foods.find(f => f.id === id);
-const upLvl = (b,id) => (b.ups && b.ups[id]) || 0;
-const perk = (b,id) => !!(b.perks && b.perks[id]);
+const upLvl = (b, id) => (b && b.ups && b.ups[id]) || 0;
+const perk = (b, id) => !!(b && b.perks && b.perks[id]);
 const isPlayerBank = id => typeof id === 'string' && id.indexOf('player:') === 0;
+const idxOk = (v, len) => { const i = parseInt(v, 10); return (isFinite(i) && i >= 0 && i < len) ? i : -1; };
+const num = (v, dv, lo, hi) => { const n = typeof v === 'number' && isFinite(v) ? v : dv; return (lo !== undefined || hi !== undefined) ? clamp(n, lo === undefined ? -Infinity : lo, hi === undefined ? Infinity : hi) : n; };
+const dayKey = t => new Date(t || Date.now()).toISOString().slice(0, 10);
 function refresh() { UI.render(true); }
 
+/* ── argent & journal ── */
 function balance() { return G.bank.bankId ? G.bank.compte : G.cash; }
-function pushJ(label, amt) {
-  if (!G.journal) G.journal = [];
-  G.journal.unshift({ t: Date.now(), label, amt });
-  if (G.journal.length > 80) G.journal.length = 80;
+function netWorth() {
+  return balance() + G.houses.reduce((a, h) => a + num(h.v, 0), 0) + G.bank.livret
+    + G.cars.reduce((a, i) => a + (DATA.cars[i] ? DATA.cars[i].p * 0.6 : 0), 0);
 }
-function receive(amt, label) {
+function pushJ(label, amt, kind) {
+  if (!Array.isArray(G.journal)) G.journal = [];
+  G.journal.unshift({ t: Date.now(), label: String(label || ''), amt: num(amt, 0), kind: kind || (amt >= 0 ? 'in' : 'out') });
+  if (G.journal.length > 100) G.journal.length = 100;
+}
+function receive(amt, label, kind) {
+  amt = num(amt, 0);
   if (!(amt > 0)) return;
   if (G.bank.bankId) G.bank.compte += amt; else G.cash += amt;
-  if (label) pushJ(label, amt);
+  if (label) pushJ(label, amt, kind || 'in');
   UI.moneyFx(amt);
 }
-function pay(amt, label) {
+function pay(amt, label, kind) {
+  amt = num(amt, 0);
   if (!(amt > 0)) return;
   if (G.bank.bankId) G.bank.compte -= amt; else G.cash -= amt;
-  if (label) pushJ(label, -amt);
+  if (label) pushJ(label, -amt, kind || 'out');
   UI.moneyFx(-amt);
 }
 
+/* ── modificateurs admin ── */
 function adminFactor() {
   if (!G.adminMod) return 1;
   if (Date.now() > G.adminMod.until) { G.adminMod = null; return 1; }
   return G.adminMod.type === 'boost' ? 1.5 : 0.5;
 }
 
-/* Applique une opération reçue via mailbox (transfert / admin) */
+/* ── opérations reçues via mailbox (transferts / admin) — isolées par op ── */
 function applyOp(op) {
-  if (!op) return;
-  if (op.type === 'credit') { receive(op.amount, 'Transfert reçu de ' + op.from); UI.moneyRain(); UI.toast('💸 ' + op.from + ' vous a envoyé ' + eur(op.amount), 'good'); }
-  else if (op.type === 'debit') { pay(op.amount, 'Transfert envoyé à ' + op.to); UI.toast('Transfert de ' + eur(op.amount) + ' à ' + op.to + ' confirmé', ''); }
-  else if (op.type === 'adminCredit') { receive(op.amount, 'Bonus administrateur'); UI.confetti(); UI.toast('🎁 Bonus admin +' + eur(op.amount), 'good'); }
-  else if (op.type === 'adminDebit') { pay(op.amount, 'Malus administrateur'); UI.toast('⚠ Malus admin −' + eur(op.amount), 'bad'); }
-  else if (op.type === 'deleteBiz') { G.biz = []; T.selBiz = -1; UI.toast('🏚 Vos entreprises ont été supprimées par un admin', 'bad'); }
-  else if (op.type === 'boost') { G.adminMod = { type: 'boost', until: Date.now() + 5*60*1000 }; UI.confetti(); UI.toast('⚡ Boost admin : revenus ×1,5 pendant 5 min', 'good'); }
-  else if (op.type === 'malus') { G.adminMod = { type: 'malus', until: Date.now() + 5*60*1000 }; UI.toast('🐌 Malus admin : revenus ×0,5 pendant 5 min', 'bad'); }
-  else if (op.type === 'reset') { const name = G.name; G = sanitize(newGame(name)); UI.toast('♻ Progression réinitialisée par un admin', 'bad'); }
+  if (!op || typeof op !== 'object') return;
+  try {
+    if (op.type === 'credit') {
+      const amt = num(op.amount, 0, 0, 1e12);
+      receive(amt, 'Transfert reçu de ' + (op.from || '?'), 'in');
+      UI.moneyRain(); FX.sound('cash');
+      UI.toast('💸 ' + esc(op.from || 'Un joueur') + ' vous a envoyé ' + eur(amt), 'good');
+    }
+    else if (op.type === 'debit') {
+      const amt = num(op.amount, 0, 0, 1e12);
+      pay(amt, 'Transfert envoyé à ' + (op.to || '?'), 'out');
+      UI.toast('Transfert de ' + eur(amt) + ' à ' + esc(op.to || '?') + ' confirmé', '');
+    }
+    else if (op.type === 'adminCredit') { receive(num(op.amount, 0, 0, 1e12), 'Bonus administrateur', 'in'); UI.confetti(); FX.sound('win'); UI.toast('🎁 Bonus admin +' + eur(op.amount), 'good'); }
+    else if (op.type === 'adminDebit') { pay(num(op.amount, 0, 0, 1e12), 'Malus administrateur', 'out'); FX.sound('error'); UI.toast('⚠ Malus admin −' + eur(op.amount), 'bad'); }
+    else if (op.type === 'deleteBiz') { G.biz = []; T.selBiz = -1; FX.sound('error'); UI.toast('🏚 Vos entreprises ont été supprimées par un admin', 'bad'); }
+    else if (op.type === 'boost') { G.adminMod = { type: 'boost', until: Date.now() + 5 * 60 * 1000 }; UI.confetti(); FX.sound('win'); UI.toast('⚡ Boost admin : revenus ×1,5 pendant 5 min', 'good'); }
+    else if (op.type === 'malus') { G.adminMod = { type: 'malus', until: Date.now() + 5 * 60 * 1000 }; FX.sound('warn'); UI.toast('🐌 Malus admin : revenus ×0,5 pendant 5 min', 'bad'); }
+    else if (op.type === 'reset') {
+      const name = G.name;
+      G = sanitize(newGame(name));
+      T.hist.length = 0; T.cashInit = false; T.cashDisp = 0; T.selBiz = -1;
+      FX.sound('error'); UI.toast('♻ Progression réinitialisée par un admin', 'bad');
+    }
+  } catch (e) {
+    if (UI && UI.reportError) UI.reportError(e, 'applyOp');
+  }
 }
 
+/* ── monde ── */
+function seedHist(base, vol, n) {
+  const out = []; let v = base;
+  for (let i = 0; i < n; i++) { v *= 1 + rnd(-vol, vol * 1.05); out.push(v); }
+  return out;
+}
 function genWorld() {
-  W = { npcs: [], biz: [], idx: { cac: 7842, immo: 100, conso: 100 }, t: 0, weather: { i: irnd(0,3), until: Date.now() + 180000 } };
+  W = { npcs: [], biz: [], idx: { cac: 7842, immo: 100, conso: 100 }, t: 0, weather: { i: irnd(0, DATA.weather.length - 1), until: Date.now() + 180000 } };
   for (let i = 0; i < 800; i++) {
     const r = Math.random();
-    W.npcs.push({ n: DATA.prenoms[irnd(0,39)] + ' ' + DATA.noms[irnd(0,39)], role: r < .78 ? 'client' : (r < .94 ? 'employé' : 'patron'), w: Math.round(rnd(600,60000)) });
+    W.npcs.push({ n: DATA.prenoms[irnd(0, DATA.prenoms.length - 1)] + ' ' + DATA.noms[irnd(0, DATA.noms.length - 1)], role: r < .78 ? 'client' : (r < .94 ? 'employé' : 'patron'), w: Math.round(rnd(600, 60000)) });
   }
-  DATA.companies.forEach((c,i) => W.biz.push({ i, n: c.n, s: c.sec, sante: rnd(48,96), boss: null }));
-  W.npcs.filter(n => n.role === 'patron').forEach((p,k) => { const b = W.biz[k % W.biz.length]; if (b) b.boss = p.n; });
+  DATA.companies.forEach((c, i) => W.biz.push({ i, n: c.n, s: c.sec, sante: rnd(48, 96), boss: null }));
+  W.npcs.filter(n => n.role === 'patron').forEach((p, k) => { const b = W.biz[k % W.biz.length]; if (b) b.boss = p.n; });
+  // historique d'indices pré-généré : les graphiques sont vivants dès l'ouverture
+  W.hCac = seedHist(7842, 0.004, 70); W.idx.cac = W.hCac[W.hCac.length - 1];
+  W.hImmo = seedHist(100, 0.0025, 70); W.idx.immo = W.hImmo[W.hImmo.length - 1];
+  W.hConso = seedHist(100, 0.003, 70); W.idx.conso = W.hConso[W.hConso.length - 1];
 }
 
+/* ── état joueur ── */
 function newGame(name) {
   return {
-    v: 10, name, created: Date.now(), last: Date.now(),
+    v: SAVE_V, name, created: Date.now(), last: Date.now(),
     cash: 2000, xp: 0, lottoCd: 0, adminMod: null,
     vitals: { sante: 92, faim: 70, soif: 65 },
     health: { doctor: null, vaccines: [], sick: false, rdv: 0 },
@@ -76,44 +132,209 @@ function newGame(name) {
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
     missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
     journal: [], tuto: 0, skills: {}, pendingPack: null,
-    stats: { earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0, jailed: false, orders: 0, lottoWins: 0 }
+    ach: {}, daily: { lastDay: '', streak: 0 },
+    stats: {
+      earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0,
+      jailed: false, orders: 0, lottoWins: 0, tutoDone: false, braquages: 0, transfersSent: 0
+    }
   };
 }
+
+/* Fusion sûre : n'accepte que des valeurs du bon type, dans les bornes du jeu. */
 function sanitize(s) {
-  const d = newGame(s.name || 'Citoyen');
-  const out = Object.assign(d, s);
-  out.vitals = Object.assign(d.vitals, s.vitals || {});
-  out.health = Object.assign(d.health, s.health || {});
-  out.bank = Object.assign(d.bank, s.bank || {});
-  out.ill = Object.assign(d.ill, s.ill || {});
-  out.stats = Object.assign(d.stats, s.stats || {});
-  out.missions = Object.assign(d.missions, s.missions || {});
-  out.quests = Object.assign(d.quests, s.quests || {});
-  out.skills = Object.assign(d.skills, s.skills || {});
-  if (typeof out.tuto !== 'number') out.tuto = -1;
-  if (typeof out.xp !== 'number') out.xp = 0;
-  if (typeof out.lottoCd !== 'number') out.lottoCd = 0;
-  out.adminMod = out.adminMod || null;
-  if (!Array.isArray(out.journal)) out.journal = [];
-  if (!Array.isArray(out.jobs)) out.jobs = [];
-  delete out.job; delete out.ach; delete out.portfolio; delete out.pets; delete out.friends;
-  out.v = 10;
-  out.biz.forEach(b => {
-    if (!b.ups) b.ups = {}; if (!b.perks) b.perks = {}; if (!b.hist) b.hist = []; if (!b.counters) b.counters = {};
-    if (typeof b.wagesTotal !== 'number') b.wagesTotal = 0;
-    if (typeof b.boostUntil !== 'number') b.boostUntil = 0;
-    if (typeof b.boostMul !== 'number') b.boostMul = 1;
-    if (typeof b.promoUntil !== 'number') b.promoUntil = 0;
-    if (b.order === undefined) b.order = null;
-  });
+  s = (s && typeof s === 'object') ? s : {};
+  const name = (typeof s.name === 'string' && s.name.trim()) ? s.name.trim().slice(0, 20) : 'Citoyen';
+  const d = newGame(name);
+  const out = d;
+  out.v = SAVE_V;
+  out.created = num(s.created, d.created, 0);
+  out.last = num(s.last, d.last, 0);
+  out.cash = num(s.cash, d.cash, -1e12, 1e12);
+  out.xp = num(s.xp, 0, 0, 1e12);
+  out.lottoCd = num(s.lottoCd, 0, 0);
+  out.adminMod = (s.adminMod && typeof s.adminMod === 'object' && num(s.adminMod.until, 0) > Date.now())
+    ? { type: s.adminMod.type === 'boost' ? 'boost' : 'malus', until: num(s.adminMod.until, 0) } : null;
+  out.tuto = typeof s.tuto === 'number' && isFinite(s.tuto) ? s.tuto : -1;
+
+  out.vitals = {
+    sante: num(s.vitals && s.vitals.sante, d.vitals.sante, 0, 100),
+    faim: num(s.vitals && s.vitals.faim, d.vitals.faim, 0, 200),
+    soif: num(s.vitals && s.vitals.soif, d.vitals.soif, 0, 100)
+  };
+  const sh = (s.health && typeof s.health === 'object') ? s.health : {};
+  out.health = {
+    doctor: DATA.doctors.some(x => x.id === sh.doctor) ? sh.doctor : null,
+    vaccines: Array.isArray(sh.vaccines) ? [...new Set(sh.vaccines.filter(v => DATA.vaccines.some(x => x.id === v)))].slice(0, DATA.vaccines.length) : [],
+    sick: !!sh.sick,
+    rdv: num(sh.rdv, 0, 0)
+  };
+
+  // emplois
+  out.jobs = Array.isArray(s.jobs) ? s.jobs.filter(j => {
+    return j && typeof j === 'object' && idxOk(j.c, DATA.companies.length) >= 0 &&
+      DATA.companies[idxOk(j.c, DATA.companies.length)] &&
+      idxOk(j.o, DATA.companies[idxOk(j.c, DATA.companies.length)].o.length) >= 0;
+  }).slice(0, 4).map(j => {
+    const co = DATA.companies[j.c].o[j.o];
+    return {
+      c: j.c, o: j.o, title: typeof j.title === 'string' ? j.title : co[0],
+      h: num(j.h, co[1], 5, 500), mode: j.mode === 'partiel' ? 'partiel' : 'plein',
+      since: num(j.since, Date.now(), 0), mins: num(j.mins, 0, 0), promo: !!j.promo
+    };
+  }) : [];
+
+  // formation
+  if (s.training && typeof s.training === 'object' && DATA.form.some(f => f.id === s.training.id)) {
+    out.training = { id: s.training.id, end: num(s.training.end, Date.now(), 0) };
+  } else out.training = null;
+
+  out.diplomas = Array.isArray(s.diplomas) ? [...new Set(s.diplomas.filter(id => DATA.form.some(f => f.id === id)))] : [];
+
+  // inventaire (nouritures connues uniquement)
+  out.inv = {};
+  if (s.inv && typeof s.inv === 'object') {
+    for (const k of Object.keys(s.inv)) {
+      if (foodById(k)) { const q = Math.floor(num(s.inv[k], 0, 0, 9999)); if (q > 0) out.inv[k] = q; }
+    }
+  }
+
+  out.cars = Array.isArray(s.cars) ? [...new Set(s.cars.map(i => idxOk(i, DATA.cars.length)).filter(i => i >= 0))].slice(0, DATA.cars.length) : [];
+
+  out.houses = Array.isArray(s.houses) ? s.houses.filter(h => h && typeof h === 'object' && idxOk(h.i, DATA.homes.length) >= 0)
+    .slice(0, 12).map(h => ({
+      i: idxOk(h.i, DATA.homes.length), v: num(h.v, DATA.homes[idxOk(h.i, DATA.homes.length)].p, 1, 1e13),
+      c: num(h.c, 0, 0, 1e7), rent: num(h.rent, 0, 0, 1e7), tenant: !!h.tenant
+    })) : [];
+
+  out.rental = (s.rental && typeof s.rental === 'object' && idxOk(s.rental.i, DATA.rentals.length) >= 0)
+    ? { i: idxOk(s.rental.i, DATA.rentals.length), loyer: num(s.rental.loyer, DATA.rentals[idxOk(s.rental.i, DATA.rentals.length)].loyer, 0, 1e7) } : null;
+
+  out.insurances = Array.isArray(s.insurances) ? [...new Set(s.insurances.filter(id => DATA.insurers.some(x => x.id === id)))] : [];
+
+  // banque
+  const sb = (s.bank && typeof s.bank === 'object') ? s.bank : {};
+  const bankIdOk = (typeof sb.bankId === 'string') && (DATA.banks.some(b => b.id === sb.bankId) || isPlayerBank(sb.bankId));
+  out.bank = {
+    bankId: bankIdOk ? sb.bankId : null,
+    bankName: bankIdOk && typeof sb.bankName === 'string' ? sb.bankName.slice(0, 60) : null,
+    playerRate: bankIdOk && isPlayerBank(sb.bankId) ? num(sb.playerRate, 2, 0, 5) : null,
+    compte: num(sb.compte, 0, -1e12, 1e12),
+    livret: num(sb.livret, 0, 0, 22950),
+    loans: Array.isArray(sb.loans) ? sb.loans.filter(L => L && typeof L === 'object' && num(L.reste, 0) > 0).slice(0, 12)
+      .map(L => ({ n: String(L.n || 'Crédit').slice(0, 30), total: num(L.total, 0, 0, 1e13), mens: num(L.mens, 0, 0, 1e10), reste: num(L.reste, 0, 0.01, 1e13) })) : []
+  };
+
+  // entreprises
+  out.biz = Array.isArray(s.biz) ? s.biz.filter(b => b && typeof b === 'object' && DATA.bizTypes[b.type]).slice(0, 8).map(b => sanitizeBiz(b)) : [];
+
+  // illégal
+  const si = (s.ill && typeof s.ill === 'object') ? s.ill : {};
+  out.ill = {
+    unlocked: !!si.unlocked,
+    heat: num(si.heat, 0, 0, 100),
+    cd: {}
+  };
+  if (si.cd && typeof si.cd === 'object') for (const a of DATA.ill) out.ill.cd[a.id] = num(si.cd[a.id], 0, 0);
+
+  out.jail = num(s.jail, 0, 0);
+  out.nextEvent = Math.max(Date.now() + 20000, num(s.nextEvent, Date.now() + 60000));
+  out.boost = (s.boost && typeof s.boost === 'object' && num(s.boost.until, 0) > Date.now() && num(s.boost.mul, 0) > 0)
+    ? { type: String(s.boost.type || 'toutes').slice(0, 20), mul: num(s.boost.mul, 1, 0.1, 10), until: num(s.boost.until, 0), label: String(s.boost.label || 'Boost').slice(0, 40) } : null;
+
+  // missions / quêtes : ne garder que celles connues dans DATA
+  out.missions = sanitizeTaskList(s.missions, DATA.missions, 15 * 60 * 1000);
+  out.quests = sanitizeTaskList(s.quests, DATA.quests, 24 * 3600 * 1000);
+
+  out.journal = Array.isArray(s.journal) ? s.journal.filter(j => j && typeof j === 'object')
+    .slice(0, 100).map(j => ({ t: num(j.t, Date.now(), 0), label: String(j.label || '').slice(0, 80), amt: num(j.amt, 0, -1e13, 1e13), kind: typeof j.kind === 'string' ? j.kind : (num(j.amt, 0) >= 0 ? 'in' : 'out') })) : [];
+
+  out.skills = {};
+  if (s.skills && typeof s.skills === 'object') for (const sk of DATA.skills) {
+    const l = Math.floor(num(s.skills[sk.id], 0, 0, sk.maxLvl));
+    if (l > 0) out.skills[sk.id] = l;
+  }
+
+  out.pendingPack = DATA.packs.some(p => p.id === s.pendingPack) ? s.pendingPack : null;
+
+  out.ach = {};
+  if (s.ach && typeof s.ach === 'object') for (const a of DATA.ach) if (num(s.ach[a.id], 0) > 0) out.ach[a.id] = num(s.ach[a.id], 0);
+
+  out.daily = {
+    lastDay: (s.daily && typeof s.daily.lastDay === 'string') ? s.daily.lastDay.slice(0, 10) : '',
+    streak: num(s.daily && s.daily.streak, 0, 0, 99999)
+  };
+
+  const st = (s.stats && typeof s.stats === 'object') ? s.stats : {};
+  out.stats = {};
+  for (const k of Object.keys(d.stats)) {
+    out.stats[k] = (typeof d.stats[k] === 'boolean') ? !!st[k] : num(st[k], d.stats[k], 0, 1e15);
+  }
+  if (out.tuto === -1) out.stats.tutoDone = true; // anciens saves : tutoriel déjà vu
+  return out;
+}
+function sanitizeTaskList(src, defs, refreshMs) {
+  const out = { list: [], refreshAt: num(src && src.refreshAt, 0, 0) };
+  if (src && Array.isArray(src.list)) {
+    for (const m of src.list) {
+      if (!m || typeof m !== 'object') continue;
+      const def = defs.find(x => x.id === m.id);
+      if (!def) continue;
+      out.list.push(Object.assign({}, def, { prog: num(m.prog, 0, 0, 1e12), claimed: !!m.claimed }));
+    }
+  }
+  if (!out.refreshAt || out.refreshAt < Date.now()) out.refreshAt = Date.now() + refreshMs;
+  return out;
+}
+function sanitizeBiz(b) {
+  const bt = DATA.bizTypes[b.type];
+  const out = {
+    type: b.type,
+    name: (typeof b.name === 'string' && b.name.trim()) ? b.name.trim().slice(0, 40) : bt.label,
+    rep: num(b.rep, 50, 5, 100),
+    stock: {}, mats: {}, prices: {}, emps: [], ups: {}, perks: {},
+    hist: Array.isArray(b.hist) ? b.hist.map(v => num(v, 0, -1e12, 1e12)).slice(-60) : [],
+    counters: {}, wagesTotal: num(b.wagesTotal, 0, 0, 1e13),
+    rev: num(b.rev, 0, 0, 1e13), sold: num(b.sold, 0, 0, 1e12), profit: num(b.profit, 0, -1e13, 1e13),
+    boostUntil: num(b.boostUntil, 0, 0), boostMul: num(b.boostMul, 1, 0.1, 10),
+    promoUntil: num(b.promoUntil, 0, 0), order: null
+  };
+  if (bt.prods) {
+    for (const p of bt.prods) {
+      out.prices[p.id] = num(b.prices && b.prices[p.id], p.ref, 0.1, 10000);
+      out.stock[p.id] = Math.floor(num(b.stock && b.stock[p.id], 0, 0, 1e9));
+      out.counters[p.id] = Math.floor(num(b.counters && b.counters[p.id], 0, 0, 1e12));
+    }
+  }
+  if (bt.mats) for (const m of Object.keys(bt.mats)) out.mats[m] = num(b.mats && b.mats[m], 0, 0, 1e9);
+  if (Array.isArray(b.emps)) out.emps = b.emps.filter(e => e && typeof e === 'object')
+    .slice(0, bt.maxEmp || 4).map(e => ({ n: String(e.n || 'Salarié').slice(0, 40), h: num(e.h, 14, 5, 500) }));
+  for (const u of (DATA.ups[b.type] || [])) {
+    const l = Math.floor(num(b.ups && b.ups[u.id], 0, 0, u.max));
+    if (l > 0) out.ups[u.id] = l;
+  }
+  for (const m of (DATA.mkt[b.type] || [])) if (m.perk && b.perks && b.perks[m.perk]) out.perks[m.perk] = true;
+  if (b.order && typeof b.order === 'object' && num(b.order.until, 0) > Date.now() && bt.prods && bt.prods.some(p => p.id === b.order.p)) {
+    out.order = { p: b.order.p, pn: String(b.order.pn || '').slice(0, 40), qty: Math.floor(num(b.order.qty, 1, 1, 1000)), reward: num(b.order.reward, 0, 0, 1e10), until: num(b.order.until, 0) };
+  }
+  if (b.type === 'immobilier') out.mandats = Math.floor(num(b.mandats, 0, 0, 1e7));
+  if (b.type === 'banque') {
+    out.accounts = Math.floor(num(b.accounts, 0, 0, 1e9));
+    out.deposits = num(b.deposits, 0, 0, 1e13);
+    out.loans = num(b.loans, 10000, 0, 1e13);
+    out.tauxCredit = num(b.tauxCredit, 6, 1, 12);
+    out.tauxLivret = num(b.tauxLivret, 2, 0, 5);
+    out.mkt = Math.floor(num(b.mkt, 1, 0, 1000));
+  }
   return out;
 }
 
+/* ── fiscalité & bonus ── */
 function tauxPAS(annuel) {
-  const TR = [[11294,0],[28797,.11],[82341,.30],[177106,.41],[Infinity,.45]];
+  const TR = [[11294, 0], [28797, .11], [82341, .30], [177106, .41], [Infinity, .45]];
   let prev = 0, tax = 0;
-  for (const [lim,r] of TR) { if (annuel > lim) { tax += (lim-prev)*r; prev = lim; } else { tax += (annuel-prev)*r; break; } }
-  return annuel > 0 ? tax/annuel : 0;
+  annuel = Math.max(0, num(annuel, 0));
+  for (const [lim, r] of TR) { if (annuel > lim) { tax += (lim - prev) * r; prev = lim; } else { tax += (annuel - prev) * r; break; } }
+  return annuel > 0 ? tax / annuel : 0;
 }
 function skillLvl(id) { return (G.skills && G.skills[id]) || 0; }
 function skillBonus(type) {
@@ -125,118 +346,206 @@ function skillBonus(type) {
   if (type === 'luck') return skillLvl('s_lotto') * 0.02;
   return 0;
 }
-function carBonus() { return G.cars.length ? Math.max(...G.cars.map(i => DATA.cars[i].b)) : 0; }
-function comfort() { return Math.min(10, G.houses.reduce((a,h) => a + (DATA.homes[h.i] ? DATA.homes[h.i].p/60000 : 0), 0)); }
+function carBonus() { return G.cars.length ? Math.max(...G.cars.map(i => (DATA.cars[i] || { b: 0 }).b)) : 0; }
+function comfort() { return Math.min(10, G.houses.reduce((a, h) => a + (DATA.homes[h.i] ? DATA.homes[h.i].p / 60000 : 0), 0)); }
 function hasShelter() { return !!G.rental || G.houses.length > 0; }
-function cov() { return G.insurances.reduce((m,id) => Math.max(m, (DATA.insurers.find(x => x.id === id)||{}).cov || 0), 0); }
-function playerTier() { return G.diplomas.reduce((m,id) => Math.max(m, DATA.form.find(f => f.id === id).tier), 1); }
+function cov() { return G.insurances.reduce((m, id) => Math.max(m, (DATA.insurers.find(x => x.id === id) || {}).cov || 0), 0); }
+function playerTier() { return G.diplomas.reduce((m, id) => { const f = DATA.form.find(x => x.id === id); return f ? Math.max(m, f.tier) : m; }, 1); }
 function ownsBiz(t) { return G.biz.some(b => b.type === t); }
 function inJail() { return G.jail > Date.now(); }
-function level(xp) { return Math.floor(Math.sqrt(xp/100)) + 1; }
+function level(xp) { return Math.floor(Math.sqrt(Math.max(0, num(xp, 0)) / 100)) + 1; }
 function addXp(n) {
+  n = Math.max(0, Math.floor(num(n, 0)));
+  if (!n) return;
   const l0 = level(G.xp); G.xp += n; const l1 = level(G.xp);
-  if (l1 > l0) { const bonus = l1*100; receive(bonus, 'Bonus niveau ' + l1); UI.toast('Niveau ' + l1 + ' ! +' + eur(bonus), 'good'); UI.confetti(); }
+  if (l1 > l0) {
+    const bonus = l1 * 100;
+    receive(bonus, 'Bonus niveau ' + l1, 'in');
+    UI.levelUp(l1);
+    FX.sound('level');
+    UI.toast('Niveau ' + l1 + ' atteint ! Prime de ' + eur(bonus), 'good');
+  }
 }
-function jobLoad(j) { return j.mode === 'plein' ? 1 : 0.5; }
-function totalLoad() { return G.jobs.reduce((a,j) => a + jobLoad(j), 0); }
+function jobLoad(j) { return j && j.mode === 'plein' ? 1 : 0.5; }
+function totalLoad() { return G.jobs.reduce((a, j) => a + jobLoad(j), 0); }
 function canTake(mode) { return totalLoad() + (mode === 'plein' ? 1 : 0.5) <= 1.001; }
 function jobNetHourly(h, mode) {
   const load = mode === 'plein' ? 1 : 0.5;
-  const gross = h * load * skillBonus('salary'), cot = gross*0.22, ni = gross - cot;
-  return ni * (1 - tauxPAS(h*2080*load*0.78));
+  const gross = h * load * skillBonus('salary'), cot = gross * 0.22, ni = gross - cot;
+  return ni * (1 - tauxPAS(h * 2080 * load * 0.78));
 }
 function bankRate() {
   if (!G.bank.bankId) return 0;
-  if (isPlayerBank(G.bank.bankId)) return G.bank.playerRate || 2;
+  if (isPlayerBank(G.bank.bankId)) return num(G.bank.playerRate, 2, 0, 5);
   const b = DATA.banks.find(x => x.id === G.bank.bankId);
   return b ? b.lv : 0;
 }
+function curWeather() { return DATA.weather[clamp(W && W.weather ? W.weather.i : 0, 0, DATA.weather.length - 1)]; }
 
+/* ── succès ── */
+const achCtx = () => ({ balance, netWorth, level });
+function maybeAch() {
+  if (!G || !G.ach) return;
+  const ctx = achCtx();
+  for (const a of DATA.ach) {
+    if (G.ach[a.id]) continue;
+    let ok = false;
+    try { ok = !!a.check(G, ctx); } catch (e) { ok = false; }
+    if (ok) unlockAch(a);
+  }
+}
+function unlockAch(a) {
+  G.ach[a.id] = Date.now();
+  G.xp += a.xp || 0; // XP brut : pas de prime niveau pour les succès (évite les cascades)
+  UI.achUnlock(a);
+  FX.sound('ach');
+}
+function achCount() { return Object.keys(G.ach || {}).length; }
+
+/* ── récompense quotidienne ── */
+function canClaimDaily() { return !!G && !!G.daily && G.daily.lastDay !== dayKey(); }
+function dailyIndex() {
+  const yd = dayKey(Date.now() - 86400000);
+  const streak = (G.daily.lastDay === yd) ? (G.daily.streak || 0) + 1 : 1;
+  return Math.min(DATA.daily.length, streak) - 1;
+}
+
+/* ── missions & quêtes ── */
 function rollMissions() {
   const pool = DATA.missions.slice(); const list = [];
-  while (list.length < 3 && pool.length) list.push(Object.assign({}, pool.splice(irnd(0,pool.length-1),1)[0], { prog:0, claimed:false }));
-  G.missions = { list, refreshAt: Date.now() + 15*60*1000 };
+  while (list.length < 3 && pool.length) list.push(Object.assign({}, pool.splice(irnd(0, pool.length - 1), 1)[0], { prog: 0, claimed: false }));
+  G.missions = { list, refreshAt: Date.now() + 15 * 60 * 1000 };
 }
 function rollQuests() {
   const pool = DATA.quests.slice(); const list = [];
-  while (list.length < 3 && pool.length) list.push(Object.assign({}, pool.splice(irnd(0,pool.length-1),1)[0], { prog:0, claimed:false }));
-  G.quests = { list, refreshAt: Date.now() + 24*3600*1000 };
+  while (list.length < 3 && pool.length) list.push(Object.assign({}, pool.splice(irnd(0, pool.length - 1), 1)[0], { prog: 0, claimed: false }));
+  G.quests = { list, refreshAt: Date.now() + 24 * 3600 * 1000 };
 }
 function mission(type, amt) {
-  if (G.missions && G.missions.list) G.missions.list.forEach(m => { if (m.type === type && !m.claimed) m.prog = (type === 'cash') ? Math.max(m.prog, amt) : m.prog + (amt || 1); });
-  if (G.quests && G.quests.list) G.quests.list.forEach(q => { if (q.type === type && !q.claimed) q.prog = (type === 'cash') ? Math.max(q.prog, amt) : q.prog + (amt || 1); });
+  if (G.missions && G.missions.list) G.missions.list.forEach(m => { if (m.type === type && !m.claimed) m.prog = (type === 'cash') ? Math.max(m.prog, num(amt, 0)) : m.prog + num(amt, 1, 0, 1e9); });
+  if (G.quests && G.quests.list) G.quests.list.forEach(q => { if (q.type === type && !q.claimed) q.prog = (type === 'cash') ? Math.max(q.prog, num(amt, 0)) : q.prog + num(amt, 1, 0, 1e9); });
 }
 
+/* ── réglages (par navigateur) ── */
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('hl_settings') || '{}'); } catch (e) { s = {}; }
+  return { sound: s.sound !== false, particles: s.particles !== false, reduced: !!s.reduced };
+}
+function saveSettings(s) { try { localStorage.setItem('hl_settings', JSON.stringify(s)); } catch (e) {} }
+
+/* ═══════════ BOUCLE DE JEU ═══════════ */
 function tick() {
   if (!G || !W) return;
+  try { tickInner(); }
+  catch (e) {
+    const key = String(e && e.message || e);
+    const now = Date.now();
+    if (!T.lastErr[key] || now - T.lastErr[key] > 60000) {
+      T.lastErr[key] = now;
+      if (UI && UI.reportError) UI.reportError(e, 'tick');
+    }
+  }
+}
+function tickInner() {
   const now = Date.now(); W.t++;
+  if (!Array.isArray(W.hCac)) { W.hCac = []; W.hImmo = []; W.hConso = []; }
   const info = { rev: 0, chg: 0, tax: 0 };
   const af = adminFactor();
 
+  /* salaires */
   G.jobs.forEach(j => {
     const load = jobLoad(j);
-    const gross = (j.h/60) * load * (1 + carBonus()) * skillBonus('salary');
-    const cot = gross*0.22, ni = gross - cot;
-    const pas = ni * tauxPAS(j.h*2080*load*0.78);
-    receive(ni * af, 'Salaire — ' + j.title);
-    pay(pas, 'PAS');
+    const gross = (j.h / 60) * load * (1 + carBonus()) * skillBonus('salary');
+    const cot = gross * 0.22, ni = gross - cot;
+    const pas = ni * tauxPAS(j.h * 2080 * load * 0.78);
+    receive(ni * af, 'Salaire — ' + j.title, 'in');
+    pay(pas, 'PAS', 'tax');
     info.rev += ni * af; info.chg += pas; info.tax += cot + pas;
     G.stats.earned += ni - pas; G.stats.tax += cot + pas;
     mission('work', 1);
-    j.mins = (j.mins || 0) + 1;
-    if (j.mins === 600 && !j.promo) { j.promo = true; j.h = +(j.h*1.06).toFixed(2); UI.toast('Promotion +6 % : ' + j.title, 'good'); }
+    j.mins = num(j.mins, 0) + 1;
+    if (j.mins === 600 && !j.promo) { j.promo = true; j.h = +(j.h * 1.06).toFixed(2); UI.toast('📈 Promotion +6 % : ' + esc(j.title), 'good'); FX.sound('win'); }
   });
 
+  /* jauges vitales (+ effets météo v11) */
+  const w = curWeather();
   const f = hasShelter() ? 1 : 1.5;
   const hungerMul = Math.max(0.5, skillBonus('hunger'));
   const healthMul = Math.max(0.5, skillBonus('health'));
-  G.vitals.faim = Math.max(0, G.vitals.faim - 0.10*f*hungerMul - (G.vitals.faim > 100 ? 0.15 : 0));
-  G.vitals.soif = Math.max(0, G.vitals.soif - 0.14*f);
+  const thirstMul = w.id === 'canicule' ? 1.7 : 1;
+  G.vitals.faim = Math.max(0, G.vitals.faim - 0.10 * f * hungerMul - (G.vitals.faim > 100 ? 0.15 : 0));
+  G.vitals.soif = Math.max(0, G.vitals.soif - 0.14 * f * thirstMul);
   if (G.vitals.faim <= 0) G.vitals.sante -= 0.45;
   if (G.vitals.soif <= 0) G.vitals.sante -= 0.60;
   if (G.vitals.faim > 100) G.vitals.sante -= (G.vitals.faim - 100) * 0.002;
   if (G.health.sick) G.vitals.sante -= 0.25;
+  if (!hasShelter() && (w.id === 'neige' || w.id === 'pluie')) G.vitals.sante -= (w.id === 'neige' ? 0.10 : 0.05);
   if (G.vitals.faim > 40 && G.vitals.faim <= 100 && G.vitals.soif > 55 && !G.health.sick && G.vitals.sante < 100)
-    G.vitals.sante = Math.min(100, G.vitals.sante + (0.22 + comfort()*0.03) * healthMul);
+    G.vitals.sante = Math.min(100, G.vitals.sante + (0.22 + comfort() * 0.03 + (w.id === 'soleil' ? 0.04 : 0)) * healthMul);
   G.vitals.sante = clamp(G.vitals.sante, 0, 100);
   if (G.vitals.sante <= 0) hospital();
 
+  /* formation */
   if (G.training && now >= G.training.end) {
     const fm = DATA.form.find(x => x.id === G.training.id);
-    G.diplomas.push(fm.id); G.training = null; mission('train', 1); addXp(40);
-    UI.toast('Formation terminée : ' + fm.n, 'good');
+    if (fm && !G.diplomas.includes(fm.id)) G.diplomas.push(fm.id);
+    G.training = null; mission('train', 1); addXp(40);
+    UI.confetti(); FX.sound('win');
+    UI.toast('🎓 Formation terminée : ' + (fm ? fm.n : 'diplôme'), 'good');
     if (T.tab === 'carriere') refresh();
+    maybeAch();
   }
 
+  /* météo */
   if (now > W.weather.until) {
     W.weather.i = irnd(0, DATA.weather.length - 1);
     W.weather.until = now + 180000;
-    UI.feed('<b>Météo :</b> ' + DATA.weather[W.weather.i].ico + ' ' + DATA.weather[W.weather.i].n);
+    const nw = curWeather();
+    UI.setWeather(nw.vis);
+    UI.feed('<b>Météo :</b> ' + nw.ico + ' ' + nw.n + ' — ' + nw.d);
   }
 
-  G.biz.forEach((b,bi) => tickBiz(b, bi, info, now, af));
+  /* entreprises */
+  G.biz.forEach((b, bi) => { try { tickBiz(b, bi, info, now, af); } catch (e) { UI.reportError(e, 'tickBiz'); } });
 
+  /* mensuel (60 s = 1 mois) */
   if (W.t % 60 === 0) monthly(info);
-  if (W.t % 6 === 0) G.houses.forEach(h => { h.v *= 1 + rnd(-0.0006,0.0009); if (h.tenant) { receive(h.rent, 'Loyer'); info.rev += h.rent; } });
 
-  W.idx.cac *= 1 + rnd(-0.0006,0.0007); W.idx.immo *= 1 + rnd(-0.0004,0.0005); W.idx.conso *= 1 + rnd(-0.0005,0.0005);
-  if (W.t % 4 === 0) W.biz.forEach(b => { b.sante = clamp(b.sante + rnd(-1.4,1.5), 20, 100); });
+  /* immobilier : valeur + loyers */
+  if (W.t % 6 === 0) G.houses.forEach(h => {
+    h.v = num(h.v, 0) * (1 + rnd(-0.0006, 0.0009));
+    if (h.tenant) { receive(num(h.rent, 0), 'Loyer perçu', 'in'); info.rev += num(h.rent, 0); }
+  });
 
-  if (now >= G.nextEvent) { G.nextEvent = now + rnd(100,280)*1000; fireEvent(); }
+  /* indices : toujours collectés (graphiques vivants même hors onglet Économie) */
+  W.idx.cac *= 1 + rnd(-0.0006, 0.0007); W.idx.immo *= 1 + rnd(-0.0004, 0.0005); W.idx.conso *= 1 + rnd(-0.0005, 0.0005);
+  W.hCac.push(W.idx.cac); W.hImmo.push(W.idx.immo); W.hConso.push(W.idx.conso);
+  if (W.hCac.length > 120) { W.hCac.shift(); W.hImmo.shift(); W.hConso.shift(); }
+  if (W.t % 4 === 0) W.biz.forEach(b => { b.sante = clamp(b.sante + rnd(-1.4, 1.5), 20, 100); });
+  if (W.t % 45 === 0) UI.buildTicker();
+
+  /* événements */
+  if (now >= G.nextEvent) { G.nextEvent = now + rnd(100, 280) * 1000; fireEvent(); }
   if (G.boost && now > G.boost.until) G.boost = null;
   if (G.ill.heat > 0) G.ill.heat = Math.max(0, G.ill.heat - 0.06);
 
+  /* IS (15 % du bénéfice cycle, chaque "mois") */
   if (W.t % 60 === 0) {
-    const benef = G.biz.reduce((a,b) => a + Math.max(0, b.profit || 0), 0);
-    if (benef > 0.05) { const is = benef*0.15; pay(is, 'IS 15 %'); info.tax += is; info.chg += is; UI.toast('IS −' + eur(is), 'warn'); }
+    const benef = G.biz.reduce((a, b) => a + Math.max(0, num(b.profit, 0)), 0);
+    if (benef > 0.05) { const is = benef * 0.15; pay(is, 'IS 15 %', 'tax'); info.tax += is; info.chg += is; UI.toast('🏛 Impôt sur les sociétés −' + eur(is), 'warn'); }
     G.biz.forEach(b => b.profit = 0);
   }
 
+  /* missions & quêtes */
   mission('cash', balance());
-  if (G.missions.refreshAt && now > G.missions.refreshAt) { rollMissions(); UI.toast('Nouveaux défis !', 'good'); }
+  if (G.missions.refreshAt && now > G.missions.refreshAt) { rollMissions(); UI.toast('🎯 Nouveaux défis disponibles !', 'good'); FX.sound('bell'); }
   if (!G.missions.list || !G.missions.list.length) rollMissions();
-  if (G.quests.refreshAt && now > G.quests.refreshAt) { rollQuests(); UI.toast('Nouvelles quêtes quotidiennes !', 'good'); }
+  if (G.quests.refreshAt && now > G.quests.refreshAt) { rollQuests(); UI.toast('📜 Nouvelles quêtes quotidiennes !', 'good'); FX.sound('bell'); }
   if (!G.quests.list || !G.quests.list.length) rollQuests();
+
+  /* succès : vérification périodique légère */
+  if (W.t % 10 === 0) maybeAch();
 
   G.tickInfo = info;
   T.hist.push(info.rev - info.chg); if (T.hist.length > 90) T.hist.shift();
@@ -245,133 +554,155 @@ function tick() {
 }
 
 function boostMul(type) { return (G.boost && (G.boost.type === type || G.boost.type === 'toutes')) ? G.boost.mul : 1; }
-function weatherMul(type) { return (DATA.weather[W.weather.i].mul || {})[type] || 1; }
+function weatherMul(type) { return (curWeather().mul || {})[type] || 1; }
 
 function tickBiz(b, bi, info, now, af) {
   let revTick = 0;
-  const localMul = (b.boostUntil > now ? b.boostMul : 1) * (perk(b,'fidelite') ? 1.08 : 1);
+  const localMul = (b.boostUntil > now ? b.boostMul : 1) * (perk(b, 'fidelite') ? 1.08 : 1);
   const promoOn = b.promoUntil > now;
 
   if (b.type === 'boulangerie' || b.type === 'magasin') {
     const bt = DATA.bizTypes[b.type];
-    if (b.type === 'magasin' && perk(b,'autoRestock')) {
+    if (b.type === 'magasin' && perk(b, 'autoRestock')) {
       bt.prods.forEach(p => {
-        if ((b.stock[p.id]||0) < 10 && balance() >= p.cost*20) { pay(p.cost*20, 'Réassort — ' + p.n); b.stock[p.id] = (b.stock[p.id]||0) + 20; }
+        if ((b.stock[p.id] || 0) < 10 && balance() >= p.cost * 20) { pay(p.cost * 20, 'Réassort — ' + p.n, 'out'); b.stock[p.id] = (b.stock[p.id] || 0) + 20; }
       });
     }
     if (b.type === 'boulangerie') {
-      const crafts = 1 + b.emps.length + upLvl(b,'four');
+      const crafts = 1 + b.emps.length + upLvl(b, 'four');
       for (let k = 0; k < crafts; k++) {
-        const rec = bt.prods[irnd(0, bt.prods.length-1)];
-        if (hasMats(b, rec)) { useMats(b, rec); b.stock[rec.id] = (b.stock[rec.id]||0)+1; }
+        const rec = bt.prods[irnd(0, bt.prods.length - 1)];
+        if (hasMats(b, rec)) { useMats(b, rec); b.stock[rec.id] = (b.stock[rec.id] || 0) + 1; }
       }
       if (!b.order && Math.random() < 0.012) {
-        const p = bt.prods[irnd(0, bt.prods.length-1)];
+        const p = bt.prods[irnd(0, bt.prods.length - 1)];
         const qty = irnd(10, 30);
-        b.order = { p: p.id, pn: p.n, qty, reward: Math.round(p.ref*qty*1.7), until: now + 120000 };
-        UI.toast('📦 Commande : ' + qty + ' × ' + p.n, 'good');
+        b.order = { p: p.id, pn: p.n, qty, reward: Math.round(p.ref * qty * 1.7), until: now + 120000 };
+        UI.toast('📦 Commande spéciale : ' + qty + ' × ' + p.n + ' (' + eur(b.order.reward) + ')', 'good');
+        FX.sound('bell');
       }
       if (b.order && now > b.order.until) b.order = null;
     }
-    const mktMul = (1 + 0.15*upLvl(b,'mkt') + (b.type === 'magasin' ? 0.10*upLvl(b,'caisses') : 0)) * boostMul(b.type) * localMul * weatherMul(b.type) * (promoOn ? 1.8 : 1);
-    const act = 0.85 + 0.3*Math.sin(W.t/70) + Math.random()*0.3;
-    const repF = 0.4 + b.rep/80;
+    const mktMul = (1 + 0.15 * upLvl(b, 'mkt') + (b.type === 'magasin' ? 0.10 * upLvl(b, 'caisses') : 0)) * boostMul(b.type) * localMul * weatherMul(b.type) * (promoOn ? 1.8 : 1);
+    const act = 0.85 + 0.3 * Math.sin(W.t / 70) + Math.random() * 0.3;
+    const repF = 0.4 + b.rep / 80;
     const priceF = priceFactor(b) * (promoOn ? 1.12 : 1);
-    const demand = Math.max(0, Math.round(bt.traffic * repF * priceF * act * mktMul * rnd(0.5,1.5) * (1 + b.emps.length*0.08)));
+    const demand = Math.max(0, Math.round(bt.traffic * repF * priceF * act * mktMul * rnd(0.5, 1.5) * (1 + b.emps.length * 0.08)));
     let sold = 0, rev = 0;
     for (let k = 0; k < demand; k++) {
       const p = pickProd(b);
       if ((b.stock[p.id] || 0) > 0) {
         b.stock[p.id]--;
-        const unit = promoOn ? +(b.prices[p.id]*0.9).toFixed(2) : b.prices[p.id];
-        rev += unit; sold++; b.counters[p.id] = (b.counters[p.id]||0)+1;
+        const unit = promoOn ? +(b.prices[p.id] * 0.9).toFixed(2) : b.prices[p.id];
+        rev += unit; sold++; b.counters[p.id] = (b.counters[p.id] || 0) + 1;
         maybeSaleFeed(p.n, unit, b.name);
       } else b.rep = Math.max(5, b.rep - 0.05);
     }
+    /* alerte stock épuisé (limitée à 1 / 90 s / entreprise) */
+    const totalStock = bt.prods.reduce((a, p) => a + (b.stock[p.id] || 0), 0);
+    if (demand > 0 && totalStock === 0 && now - (b.oosAt || 0) > 90000) {
+      b.oosAt = now;
+      UI.toast('📉 « ' + esc(b.name) + ' » : stock épuisé, les clients repartent !', 'warn');
+      FX.sound('warn');
+    }
     rev *= af;
-    const repGain = (1 + 0.4*upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b,'enseigne') ? 1.5 : 1) * skillBonus('rep');
-    b.rep = clamp(b.rep + (sold ? 0.02*sold*repGain : -0.03), 5, 100);
-    if (rev > 0) { receive(rev, 'Ventes — ' + b.name); info.rev += rev; b.rev += rev; b.profit = (b.profit||0)+rev; revTick = rev; }
+    const repGain = (1 + 0.4 * upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b, 'enseigne') ? 1.5 : 1) * skillBonus('rep');
+    b.rep = clamp(b.rep + (sold ? 0.02 * sold * repGain : -0.03), 5, 100);
+    if (rev > 0) { receive(rev, 'Ventes — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
     G.stats.sales += sold; if (sold) mission('sell', sold);
-    const wages = b.emps.reduce((a,e) => a + e.h/60, 0);
-    if (wages > 0) { pay(wages, 'Salaires — ' + b.name); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
+    const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
+    if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   else if (b.type === 'immobilier') {
-    if (upLvl(b,'vitrine') && W.t % 60 === 0) b.mandats = (b.mandats||0) + upLvl(b,'vitrine');
-    let rev = (b.mandats||0) * rnd(0.8,2.2) * (1 + 0.25*upLvl(b,'reseau')) * (1 + 0.05*b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
+    if (upLvl(b, 'vitrine') && W.t % 60 === 0) b.mandats = (b.mandats || 0) + upLvl(b, 'vitrine');
+    let rev = (b.mandats || 0) * rnd(0.8, 2.2) * (1 + 0.25 * upLvl(b, 'reseau')) * (1 + 0.05 * b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
     rev *= af;
-    if (rev > 0) { receive(rev, 'Commissions — ' + b.name); info.rev += rev; b.rev += rev; b.profit = (b.profit||0)+rev; revTick = rev; }
-    const wages = b.emps.reduce((a,e) => a + e.h/60, 0);
-    if (wages > 0) { pay(wages, 'Salaires — ' + b.name); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
+    if (rev > 0) { receive(rev, 'Commissions — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
+    const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
+    if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   else if (b.type === 'banque') {
-    const fees = b.accounts * 3/60 * (perk(b,'fidelite') ? 1.1 : 1);
-    const loanInc = b.loans * (b.tauxCredit + 0.5*upLvl(b,'trader')) / 100 / 3600;
+    const fees = b.accounts * 3 / 60 * (perk(b, 'fidelite') ? 1.1 : 1);
+    const loanInc = b.loans * (b.tauxCredit + 0.5 * upLvl(b, 'trader')) / 100 / 3600;
     const depCost = b.deposits * b.tauxLivret / 100 / 3600;
-    if (Math.random() < 0.05 + b.mkt*0.012 + 0.02*upLvl(b,'app') + 0.01*b.emps.length + (perk(b,'pub') ? 0.03 : 0)) b.accounts += irnd(1,3);
-    b.deposits += b.accounts * rnd(0.4,2.2);
+    if (Math.random() < 0.05 + b.mkt * 0.012 + 0.02 * upLvl(b, 'app') + 0.01 * b.emps.length + (perk(b, 'pub') ? 0.03 : 0)) b.accounts += irnd(1, 3);
+    b.deposits += b.accounts * rnd(0.4, 2.2);
     const dem = b.tauxCredit < 5 ? 1400 : (b.tauxCredit < 8 ? 750 : 220);
     b.loans += dem * Math.random();
-    if (Math.random() < 0.008 * (1 - 0.25*upLvl(b,'secu'))) { const def = b.loans * rnd(0.005,0.015); b.loans = Math.max(0, b.loans - def); }
+    if (Math.random() < 0.008 * (1 - 0.25 * upLvl(b, 'secu'))) { const def = b.loans * rnd(0.005, 0.015); b.loans = Math.max(0, b.loans - def); }
     let net = (fees + loanInc - depCost) * af;
-    if (net >= 0) { receive(net, 'PNB — ' + b.name); info.rev += net; revTick = net; }
-    else { pay(-net, 'Charge — ' + b.name); info.chg += -net; }
-    b.rev += Math.max(0,net); b.profit = (b.profit||0)+net;
-    const wages = b.emps.reduce((a,e) => a + e.h/60, 0);
-    if (wages > 0) { pay(wages, 'Salaires — ' + b.name); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
+    if (net >= 0) { receive(net, 'PNB — ' + b.name, 'biz'); info.rev += net; revTick = net; }
+    else { pay(-net, 'Charge — ' + b.name, 'out'); info.chg += -net; }
+    b.rev += Math.max(0, net); b.profit = num(b.profit, 0) + net;
+    const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
+    if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   b.hist.push(revTick); if (b.hist.length > 60) b.hist.shift();
 }
 
-function hasMats(b, rec) { return Object.entries(rec.in).every(([m,q]) => (b.mats[m]||0) >= q); }
-function useMats(b, rec) { Object.entries(rec.in).forEach(([m,q]) => b.mats[m] -= q); }
+function hasMats(b, rec) { return Object.entries(rec.in).every(([m, q]) => (b.mats[m] || 0) >= q); }
+function useMats(b, rec) { Object.entries(rec.in).forEach(([m, q]) => b.mats[m] -= q); }
 function priceFactor(b) {
-  const prods = DATA.bizTypes[b.type].prods; let s = 0;
-  prods.forEach(p => { s += clamp(p.ref / (b.prices[p.id] || p.ref), 0.5, 1.4); });
-  return s / prods.length;
+  const bt = DATA.bizTypes[b.type];
+  if (!bt || !bt.prods) return 1;
+  let s = 0;
+  bt.prods.forEach(p => { s += clamp(p.ref / (b.prices[p.id] || p.ref), 0.5, 1.4); });
+  return s / bt.prods.length;
 }
 function pickProd(b) {
-  const prods = DATA.bizTypes[b.type].prods; const tot = prods.reduce((a,p) => a + p.w, 0); let r = Math.random()*tot;
+  const prods = DATA.bizTypes[b.type].prods;
+  if (!prods || !prods.length) return null;
+  const tot = prods.reduce((a, p) => a + p.w, 0); let r = Math.random() * tot;
   for (const p of prods) { r -= p.w; if (r <= 0) return p; }
   return prods[0];
 }
 function maybeSaleFeed(prod, prix, bizName) {
   const now = Date.now(); if (now - T.lastSaleFeed < 4000) return;
   T.lastSaleFeed = now;
-  UI.feed('<b>' + W.npcs[irnd(0,799)].n + '</b> achète « ' + prod + ' » à ' + esc(bizName) + ' <span class="money">+' + eur(prix) + '</span>');
+  UI.feed('<b>' + esc(W.npcs[irnd(0, W.npcs.length - 1)].n) + '</b> achète « ' + esc(prod) + ' » à ' + esc(bizName) + ' <span class="money">+' + eur(prix) + '</span>');
 }
 
 function monthly(info) {
-  if (G.rental) { pay(G.rental.loyer, 'Loyer'); info.chg += G.rental.loyer; }
-  G.houses.forEach(h => { pay(h.c, 'Charges'); info.chg += h.c; });
+  if (G.rental) { pay(G.rental.loyer, 'Loyer', 'out'); info.chg += G.rental.loyer; }
+  G.houses.forEach(h => { pay(num(h.c, 0), 'Charges — ' + (DATA.homes[h.i] ? DATA.homes[h.i].n : 'bien'), 'out'); info.chg += num(h.c, 0); });
   G.bank.loans = G.bank.loans.filter(L => {
-    pay(L.mens, 'Crédit — ' + L.n); info.chg += L.mens; L.reste -= L.mens;
-    if (L.reste <= 0) { UI.toast(L.n + ' remboursé ✓', 'good'); return false; }
+    pay(L.mens, 'Crédit — ' + L.n, 'out'); info.chg += L.mens; L.reste -= L.mens;
+    if (L.reste <= 0) { UI.toast('✅ Crédit « ' + esc(L.n) + ' » remboursé', 'good'); FX.sound('win'); maybeAch(); return false; }
     return true;
   });
   const rate = bankRate();
-  if (G.bank.livret > 0 && rate > 0) { const i = G.bank.livret * rate/100/12; G.bank.livret += i; pushJ('Intérêts Livret A', i); }
-  G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); pay(a.m, 'Assurance — ' + a.n); info.chg += a.m; });
-  const emp = G.biz.reduce((a,b) => a + b.emps.length, 0);
-  if (emp > 0) { const u = emp*45; pay(u, 'URSSAF'); info.chg += u; info.tax += u; }
+  if (G.bank.livret > 0 && rate > 0) { const i = G.bank.livret * rate / 100 / 12; G.bank.livret = Math.min(22950, G.bank.livret + i); pushJ('Intérêts Livret A', i, 'in'); }
+  G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); if (!a) return; pay(a.m, 'Assurance — ' + a.n, 'out'); info.chg += a.m; });
+  const emp = G.biz.reduce((a, b) => a + b.emps.length, 0);
+  if (emp > 0) { const u = emp * 45; pay(u, 'URSSAF', 'tax'); info.chg += u; info.tax += u; G.stats.tax += u; }
 }
 
 function fireEvent() {
-  const pool = DATA.events.filter(e => !e.ok || e.ok());
-  const e = pool[irnd(0, pool.length-1)];
-  const delta = e.f(); G.stats.events++;
-  UI.toast(e.m + ' (' + delta + ')', e.t === 'good' ? 'good' : 'warn');
-  UI.feed('<b>Événement :</b> ' + e.m + ' <span class="money">' + delta + '</span>');
+  let pool = DATA.events.filter(e => { try { return !e.ok || e.ok(); } catch (err) { return false; } });
+  if (!pool.length) pool = DATA.events.filter(e => !e.ok);
+  if (!pool.length) return;
+  const e = pool[irnd(0, pool.length - 1)];
+  let delta = '';
+  try { delta = e.f(); } catch (err) { UI.reportError(err, 'event'); return; }
+  G.stats.events++;
+  UI.toast(e.m + ' <span class="toast-amt">(' + esc(delta) + ')</span>', e.t === 'good' ? 'good' : 'warn');
+  UI.feed('<b>Événement :</b> ' + esc(e.m) + ' <span class="money">' + esc(delta) + '</span>');
+  UI.eventFx(e.t);
+  FX.sound(e.t === 'good' ? 'win' : 'warn');
   if (e.t === 'good') UI.confetti();
-  if (G.health.sick && T.tab === 'sante') refresh();
+  if (T.tab === 'sante') refresh();
+  maybeAch();
 }
 
 function hospital() {
-  let c = 800; c *= (1 - cov());
-  pay(c, 'Hospitalisation'); G.vitals = { sante: 35, faim: 70, soif: 65 };
-  UI.toast('Hospitalisation −' + eur(c), 'bad');
+  let c = 800 * (1 - cov());
+  pay(c, 'Hospitalisation', 'out');
+  G.vitals = { sante: 35, faim: 70, soif: 65 };
+  UI.screenShake(); FX.sound('jail');
+  UI.toast('🚑 Hospitalisation −' + eur(c) + ' — pensez à manger et boire !', 'bad');
 }
 
+/* ═══════════ ACTIONS ═══════════ */
 const A = {
   tab(d) { UI.setTab(d.id); },
   authTab(d) { UI.authTab(d.t); },
@@ -382,391 +713,679 @@ const A = {
   doAnnounce() { UI.doAnnounce(); },
   openAdmin() { UI.openAdmin(); },
   adminDo(d) { UI.adminDo(d); },
+  openSettings() { UI.openSettings(); },
+  openHelp() { UI.openHelp(); },
+  toggleSetting(d) {
+    const s = loadSettings();
+    const k = d.k;
+    if (!(k in s)) return;
+    s[k] = !s[k];
+    saveSettings(s); FX.configure(s);
+    FX.sound('click');
+    if (k === 'sound' && s.sound) FX.sound('bell');
+    // la modale réglages se rafraîchit elle-même ; sinon simple render silencieux
+    if (document.querySelector('#modalRoot .set-row')) UI.openSettings();
+    else UI.render(true);
+  },
+  setBankAmt(d) {
+    const isLoan = d.of === 'loan';
+    const inp = document.getElementById(isLoan ? 'loanAmt' : 'bankAmt');
+    if (!inp || !G) return;
+    let v = 0;
+    if (d.v === 'max') v = Math.max(0, Math.floor(Math.min(G.cash, G.bank.compte)));
+    else v = Math.floor(num(d.v, 0, 0, 1e9));
+    inp.value = v > 0 ? v : '';
+    FX.sound('click');
+  },
+  journalF(d) { T.journalF = d.f || 'all'; FX.sound('click'); refresh(); },
+
+  claimDaily() {
+    if (!canClaimDaily()) return UI.toast('Récompense déjà réclamée aujourd’hui. Revenez demain !', 'warn');
+    const yd = dayKey(Date.now() - 86400000);
+    G.daily.streak = (G.daily.lastDay === yd) ? (G.daily.streak || 0) + 1 : 1;
+    G.daily.lastDay = dayKey();
+    const r = DATA.daily[Math.min(DATA.daily.length, G.daily.streak) - 1];
+    receive(r.amt, 'Récompense quotidienne J' + G.daily.streak, 'in');
+    addXp(r.xp);
+    UI.confetti(); FX.sound('win');
+    UI.toast('📅 Jour ' + G.daily.streak + ' : +' + eur(r.amt) + ' · +' + r.xp + ' XP', 'good');
+    save(); maybeAch(); refresh();
+  },
 
   buyFood(d) {
     const f = foodById(d.id); if (!f) return;
-    if (balance() < f.p) return UI.toast('Solde insuffisant.', 'bad');
-    pay(f.p, 'Courses — ' + f.n); G.stats.spent += f.p;
-    G.inv[d.id] = (G.inv[d.id]||0)+1;
-    mission('shop', 1); addXp(2);
-    UI.toast(f.n + ' acheté', 'good'); refresh();
+    const q = clamp(Math.floor(num(d.q, 1, 1, 99)), 1, 99);
+    const cost = +(f.p * q).toFixed(2);
+    if (balance() < cost) return UI.toast('Solde insuffisant.', 'bad'), FX.sound('error');
+    pay(cost, 'Courses — ' + f.n + (q > 1 ? ' ×' + q : ''), 'food'); G.stats.spent += cost;
+    G.inv[d.id] = (G.inv[d.id] || 0) + q;
+    mission('shop', q); addXp(2 * q);
+    FX.sound('buy');
+    UI.toast(f.ico + ' ' + f.n + (q > 1 ? ' ×' + q : '') + ' acheté' + (q > 1 ? 's' : ''), 'good');
+    refresh();
   },
   eat(d, el) {
     const f = foodById(d.id); if (!f) return;
-    if ((G.inv[d.id]||0) <= 0) return UI.toast('Vous n’en avez plus.', 'warn');
-    if (el && el.closest) { const card = el.closest('.inv-card'); if (card) card.classList.add('chomp'); }
+    if ((G.inv[d.id] || 0) <= 0) { FX.sound('error'); return UI.toast('Vous n’en avez plus.', 'warn'); }
+    if (el && el.closest) { const card = el.closest('.inv-card'); if (card) { card.classList.add('chomp'); FX.spark && sparkAt(card); } }
     G.inv[d.id]--;
+    if (G.inv[d.id] <= 0) delete G.inv[d.id];
+    const before = G.vitals.faim;
     G.vitals.faim = clamp(G.vitals.faim + f.f, 0, 200);
     G.vitals.soif = clamp(G.vitals.soif + f.s, 0, 100);
     mission('eat', 1); addXp(2);
+    FX.sound('eat');
     if (f.f > 0) { UI.floatText('+' + f.f + ' Faim', 'var(--orange)'); UI.pulseVital('rowFaim'); }
+    else if (f.f < 0) UI.floatText(f.f + ' Faim', 'var(--red)');
     if (f.s > 0) { UI.floatText('+' + f.s + ' Soif', 'var(--blue)'); UI.pulseVital('rowSoif'); }
-    if (G.vitals.faim > 140 && Math.random() < 0.35) { G.health.sick = true; UI.toast('Trouble alimentaire : trop mangé ! Consultez un médecin.', 'bad'); }
-    UI.toast(f.n + ' consommé', 'good');
+    else if (f.s < 0) { UI.floatText(f.s + ' Soif', 'var(--red)'); UI.pulseVital('rowSoif'); }
+    if (before <= 100 && G.vitals.faim > 140 && Math.random() < 0.35) { G.health.sick = true; UI.toast('🤢 Trouble alimentaire : trop mangé ! Consultez un médecin.', 'bad'); FX.sound('error'); }
     setTimeout(() => refresh(), 380);
   },
 
   train(d) {
-    if (G.training) return UI.toast('Formation en cours.', 'warn');
+    if (G.training) return UI.toast('Formation déjà en cours.', 'warn');
     const f = DATA.form.find(x => x.id === d.id); if (!f || G.diplomas.includes(d.id)) return;
-    if (balance() < f.cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(f.cost, 'Formation — ' + f.n); G.stats.spent += f.cost;
-    G.training = { id: d.id, end: Date.now() + f.dur*1000 };
-    UI.toast('Formation commencée', 'good'); refresh();
+    if (balance() < f.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    if (f.cost > 0) { pay(f.cost, 'Formation — ' + f.n, 'out'); G.stats.spent += f.cost; }
+    G.training = { id: f.id, end: Date.now() + f.dur * 1000 };
+    FX.sound('buy');
+    UI.toast('📚 Formation commencée : ' + f.n + ' (' + f.dur + ' s)', 'good'); refresh();
   },
-  jobSec(d) { T.jobF.sec = d.v; refresh(); },
+  jobSec(d) { T.jobF.sec = d.v || ''; refresh(); },
   jobOk() { T.jobF.ok = !T.jobF.ok; refresh(); },
   offer(d) {
-    const c = +d.c, o = +d.o, job = DATA.companies[c].o[o];
-    if (playerTier() < job[2]) return UI.toast('Tier insuffisant.', 'bad');
-    if (totalLoad() >= 1) return UI.toast('Charge 100 % atteinte.', 'bad');
+    const c = idxOk(d.c, DATA.companies.length); if (c < 0) return;
+    const comp = DATA.companies[c];
+    const o = idxOk(d.o, comp.o.length); if (o < 0) return;
+    const job = comp.o[o];
+    if (playerTier() < job[2]) return UI.toast('Diplôme insuffisant pour ce poste.', 'bad');
+    if (totalLoad() >= 1) return UI.toast('Charge de travail à 100 %.', 'bad');
     T.offer = { c, o };
     T.offerMode = canTake('plein') ? 'plein' : 'partiel';
+    FX.sound('click');
     offerModal();
   },
-  pickMode(d) { if (!canTake(d.m)) return UI.toast('Charge insuffisante.', 'warn'); T.offerMode = d.m; offerModal(); },
+  pickMode(d) { if (!canTake(d.m)) return UI.toast('Charge de travail insuffisante.', 'warn'); T.offerMode = d.m; FX.sound('click'); offerModal(); },
   sign() {
     if (!T.offer) return;
+    const c = idxOk(T.offer.c, DATA.companies.length); if (c < 0) { T.offer = null; return; }
+    const comp = DATA.companies[c];
+    const o = idxOk(T.offer.o, comp.o.length); if (o < 0) { T.offer = null; return; }
     const mode = T.offerMode;
     if (!canTake(mode)) return UI.toast('Charge dépassée.', 'bad');
-    const c = T.offer.c, o = T.offer.o, job = DATA.companies[c].o[o];
+    const job = comp.o[o];
     G.jobs.push({ c, o, title: job[0], h: job[1], mode, since: Date.now(), mins: 0, promo: false });
+    T.offer = null;
     addXp(30); UI.closeModal();
-    UI.toast('Contrat signé : ' + job[0], 'good');
+    UI.confetti(); FX.sound('win');
+    UI.toast('✍️ Contrat signé : ' + esc(job[0]) + ' chez ' + esc(comp.n), 'good');
+    save(); maybeAch();
     UI.updateTop(); refresh();
   },
-  quitJob(d) { const i = +d.i; const j = G.jobs[i]; if (!j) return; G.jobs.splice(i,1); UI.toast('Quitté : ' + j.title, 'warn'); UI.updateTop(); refresh(); },
+  quitJob(d) {
+    const i = idxOk(d.i, G.jobs.length); if (i < 0) return;
+    const j = G.jobs[i];
+    G.jobs.splice(i, 1);
+    FX.sound('back');
+    UI.toast('Contrat rompu : ' + esc(j.title), 'warn');
+    UI.updateTop(); refresh();
+  },
 
   openCreate(d) {
-    const bt = DATA.bizTypes[d.type];
-    if (bt.req && !G.diplomas.includes(bt.req)) return UI.toast('Formation requise.', 'bad');
-    if (balance() < bt.cost) return UI.toast('Capital insuffisant.', 'bad');
-    UI.modal('<h2>Fonder ' + bt.label.toLowerCase() + '</h2><div class="m-sub">Capital : ' + eur(bt.cost) + '</div>' +
-      '<label style="font-size:12.5px;color:var(--mut)">Nom<input id="bizName" class="mini" style="width:100%;margin-top:6px" maxlength="40" value="' + esc(bt.label + ' ' + G.name) + '"></label>' +
+    const bt = DATA.bizTypes[d.type]; if (!bt) return;
+    if (bt.req && !G.diplomas.includes(bt.req)) return UI.toast('Formation requise : ' + esc((DATA.form.find(f => f.id === bt.req) || {}).n || ''), 'bad');
+    if (balance() < bt.cost) { FX.sound('error'); return UI.toast('Capital insuffisant (' + eur(bt.cost) + ' requis).', 'bad'); }
+    UI.modal('<h2>Fonder ' + esc(bt.label.toLowerCase()) + '</h2><div class="m-sub">Capital : ' + eur(bt.cost) + (bt.req ? ' · Diplôme requis obtenu ✓' : '') + '</div>' +
+      '<label class="m-field">Nom de l’entreprise<input id="bizName" class="mini m-wide" maxlength="40" value="' + esc(bt.label + ' ' + G.name) + '"></label>' +
+      '<div class="m-hint">La réputation démarre à 50/100. Pensez à recruter et à faire du marketing !</div>' +
       '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Annuler</button>' +
       '<button class="btn btn-primary" data-act="createBiz" data-type="' + d.type + '">Fonder</button></div>');
   },
   createBiz(d) {
-    const bt = DATA.bizTypes[d.type];
-    if (balance() < bt.cost) return UI.toast('Fonds insuffisants.', 'bad');
-    const name = ((document.getElementById('bizName') || {}).value || bt.label).trim();
-    pay(bt.cost, 'Capital — ' + bt.label); G.stats.spent += bt.cost;
-    const b = { type: d.type, name, rep: 50, stock: {}, mats: {}, prices: {}, emps: [], ups: {}, perks: {}, hist: [], counters: {}, wagesTotal: 0, rev: 0, sold: 0, profit: 0, boostUntil: 0, boostMul: 1, promoUntil: 0, order: null };
-    if (d.type === 'boulangerie' || d.type === 'magasin') bt.prods.forEach(p => { b.prices[p.id] = p.ref; b.stock[p.id] = 0; });
-    if (d.type === 'immobilier') b.mandats = 0;
-    if (d.type === 'banque') Object.assign(b, { accounts: 0, deposits: 0, loans: 10000, tauxCredit: 6, tauxLivret: 2, mkt: 1 });
+    const bt = DATA.bizTypes[d.type]; if (!bt) return UI.closeModal();
+    if (bt.req && !G.diplomas.includes(bt.req)) { UI.closeModal(); return UI.toast('Formation requise.', 'bad'); }
+    if (balance() < bt.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    if (G.biz.length >= 8) return UI.toast('Maximum 8 entreprises.', 'warn');
+    const inp = document.getElementById('bizName');
+    const name = ((inp && inp.value) || bt.label).trim().slice(0, 40) || bt.label;
+    pay(bt.cost, 'Capital — ' + bt.label, 'out'); G.stats.spent += bt.cost;
+    const b = sanitizeBiz({ type: d.type, name });
     G.biz.push(b); addXp(80);
-    UI.closeModal(); UI.confetti();
-    UI.toast('🎉 ' + bt.label + ' « ' + name + ' » fondée !', 'good');
+    UI.closeModal(); UI.confetti(); FX.sound('win');
+    UI.toast('🎉 ' + esc(bt.label) + ' « ' + esc(name) + ' » fondée !', 'good');
+    save(); maybeAch();
     T.selBiz = G.biz.length - 1; T.bizTab = 'overview'; refresh();
   },
-  selBiz(d) { T.selBiz = +d.i; T.bizTab = 'overview'; UI.render(); },
-  backBiz() { T.selBiz = -1; UI.render(); },
-  bizTab(d) { T.bizTab = d.t; UI.render(); },
+  selBiz(d) { const i = idxOk(d.i, G.biz.length); if (i < 0) return; T.selBiz = i; T.bizTab = 'overview'; FX.sound('click'); UI.render(); },
+  backBiz() { T.selBiz = -1; FX.sound('back'); UI.render(); },
+  bizTab(d) { if (!['overview', 'prod', 'mkt', 'hr', 'ups', 'compta'].includes(d.t)) return; T.bizTab = d.t; FX.sound('click'); UI.render(); },
+  bizAt(d) { const i = idxOk(d.b, G.biz.length); return i >= 0 ? G.biz[i] : null; },
+
   buyMat(d) {
-    const b = G.biz[+d.b], m = DATA.bizTypes.boulangerie.mats[d.m];
-    const q = +d.q, cost = m.p*q * skillBonus('upgrade');
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Matières — ' + m.n); G.stats.spent += cost;
-    b.mats[d.m] = (b.mats[d.m]||0)+q;
+    const b = A.bizAt(d); if (!b || b.type !== 'boulangerie') return;
+    const m = DATA.bizTypes.boulangerie.mats[d.m]; if (!m) return;
+    const q = clamp(Math.floor(num(d.q, 10, 1, 10000)), 1, 10000);
+    const cost = +(m.p * q * skillBonus('upgrade')).toFixed(2);
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(cost, 'Matières — ' + m.n, 'biz'); G.stats.spent += cost;
+    b.mats[d.m] = num(b.mats[d.m], 0) + q;
+    FX.sound('craft');
     UI.toast('+' + q + ' × ' + m.n, 'good'); refresh();
   },
   craft(d) {
-    const b = G.biz[+d.b], rec = DATA.bizTypes.boulangerie.prods.find(p => p.id === d.p);
-    for (let i = 0; i < +d.q; i++) { if (!hasMats(b, rec)) break; useMats(b, rec); b.stock[rec.id] = (b.stock[rec.id]||0)+1; }
+    const b = A.bizAt(d); if (!b || b.type !== 'boulangerie') return;
+    const rec = DATA.bizTypes.boulangerie.prods.find(p => p.id === d.p); if (!rec) return;
+    const q = clamp(Math.floor(num(d.q, 1, 1, 1000)), 1, 1000);
+    let made = 0;
+    for (let i = 0; i < q; i++) { if (!hasMats(b, rec)) break; useMats(b, rec); b.stock[rec.id] = (b.stock[rec.id] || 0) + 1; made++; }
+    if (!made) { FX.sound('error'); UI.toast('Matières premières insuffisantes.', 'warn'); return; }
+    FX.sound('craft');
+    UI.toast('🥖 ' + made + ' × ' + rec.n + ' enfourné' + (made > 1 ? 's' : ''), 'good');
     refresh();
   },
-  priceAdj(d) { const b = G.biz[+d.b]; b.prices[d.p] = Math.max(0.1, +((b.prices[d.p]||1) + +d.v).toFixed(2)); refresh(); },
+  priceAdj(d) {
+    const b = A.bizAt(d); if (!b || !b.prices || !(d.p in b.prices)) return;
+    b.prices[d.p] = clamp(+(num(b.prices[d.p], 1) + num(d.v, 0)).toFixed(2), 0.1, 999);
+    FX.sound('click');
+    refresh();
+  },
   buyStock(d) {
-    const b = G.biz[+d.b], p = DATA.bizTypes.magasin.prods.find(x => x.id === d.p);
-    if (!b || !p) return;
-    const q = +d.q, cost = p.cost*q;
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Grossiste — ' + p.n); G.stats.spent += cost;
-    b.stock[p.id] = (b.stock[p.id]||0)+q;
+    const b = A.bizAt(d); if (!b || b.type !== 'magasin') return;
+    const p = DATA.bizTypes.magasin.prods.find(x => x.id === d.p); if (!p) return;
+    const q = clamp(Math.floor(num(d.q, 10, 1, 10000)), 1, 10000);
+    const cost = +(p.cost * q).toFixed(2);
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(cost, 'Grossiste — ' + p.n, 'biz'); G.stats.spent += cost;
+    b.stock[p.id] = (b.stock[p.id] || 0) + q;
+    FX.sound('craft');
     UI.toast('+' + q + ' × ' + p.n, 'good'); refresh();
   },
   upgrade(d) {
-    const b = G.biz[+d.b], u = DATA.ups[b.type].find(x => x.id === d.u);
+    const b = A.bizAt(d); if (!b) return;
+    const u = (DATA.ups[b.type] || []).find(x => x.id === d.u); if (!u) return;
     const lvl = upLvl(b, u.id);
-    if (lvl >= u.max) return UI.toast('Max atteint.', 'warn');
+    if (lvl >= u.max) return UI.toast('Niveau maximum atteint.', 'warn');
     const cost = Math.round(u.cost * Math.pow(u.grow, lvl) * skillBonus('upgrade'));
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Upgrade — ' + u.n); b.ups[u.id] = lvl+1; addXp(25);
-    UI.toast(u.n + ' niv ' + (lvl+1), 'good'); refresh();
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(cost, 'Upgrade — ' + u.n, 'biz'); b.ups[u.id] = lvl + 1; addXp(25);
+    UI.confetti(); FX.sound('win');
+    UI.toast('⬆ ' + u.n + ' niveau ' + (lvl + 1) + '/' + u.max, 'good');
+    save(); refresh();
   },
   mktDo(d) {
-    const b = G.biz[+d.b];
-    const a = (DATA.mkt[b.type] || []).find(x => x.id === d.a);
-    if (!a) return;
+    const b = A.bizAt(d); if (!b) return;
+    const a = (DATA.mkt[b.type] || []).find(x => x.id === d.a); if (!a) return;
     if (a.once && perk(b, a.perk)) return UI.toast('Déjà actif.', 'warn');
-    if (balance() < a.cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(a.cost, 'Marketing — ' + a.n);
-    if (a.kind === 'boost') { b.boostUntil = Date.now() + a.dur*1000; b.boostMul = a.mul; if (a.rep) b.rep = clamp(b.rep + a.rep, 5, 100); UI.toast('📣 ' + a.n + ' : ×' + a.mul + ' / ' + a.dur + ' s', 'good'); UI.confetti(); }
-    else if (a.kind === 'promo') { b.promoUntil = Date.now() + a.dur*1000; UI.toast('⚡ Flash : -10 % ×1,8 / ' + a.dur + ' s', 'good'); }
-    else if (a.kind === 'perk') { b.perks[a.perk] = true; if (a.rep) b.rep = clamp(b.rep + a.rep, 5, 100); UI.toast('✓ ' + a.n + ' actif', 'good'); }
-    else if (a.kind === 'accounts') { b.accounts += 25; UI.toast('✓ +25 comptes', 'good'); }
-    addXp(15); refresh();
+    if (balance() < a.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(a.cost, 'Marketing — ' + a.n, 'biz');
+    if (a.kind === 'boost') { b.boostUntil = Date.now() + a.dur * 1000; b.boostMul = a.mul; if (a.rep) b.rep = clamp(b.rep + a.rep, 5, 100); UI.toast('📣 ' + a.n + ' : ×' + a.mul + ' / ' + a.dur + ' s', 'good'); UI.confetti(); FX.sound('win'); }
+    else if (a.kind === 'promo') { b.promoUntil = Date.now() + a.dur * 1000; UI.toast('⚡ Vente flash : -10 % ×1,8 / ' + a.dur + ' s', 'good'); FX.sound('win'); }
+    else if (a.kind === 'perk') { b.perks[a.perk] = true; if (a.rep) b.rep = clamp(b.rep + a.rep, 5, 100); UI.toast('✓ ' + a.n + ' activé en permanence', 'good'); FX.sound('win'); }
+    else if (a.kind === 'accounts') { b.accounts += 25; UI.toast('✓ +25 comptes clients', 'good'); FX.sound('win'); }
+    addXp(15); save(); refresh();
   },
   orderFill(d) {
-    const b = G.biz[+d.b]; const o = b.order;
-    if (!o) return UI.toast('Pas de commande.', 'warn');
-    if ((b.stock[o.p]||0) < o.qty) return UI.toast('Stock insuffisant.', 'bad');
+    const b = A.bizAt(d); if (!b) return;
+    const o = b.order;
+    if (!o) return UI.toast('Aucune commande en attente.', 'warn');
+    if ((b.stock[o.p] || 0) < o.qty) { FX.sound('error'); return UI.toast('Stock insuffisant : ' + (b.stock[o.p] || 0) + '/' + o.qty + '.', 'bad'); }
     b.stock[o.p] -= o.qty;
-    receive(o.reward, 'Commande — ' + o.pn);
+    receive(o.reward, 'Commande — ' + o.pn, 'biz');
     b.rep = clamp(b.rep + 2, 5, 100); b.order = null;
-    G.stats.orders = (G.stats.orders||0) + 1; addXp(20);
-    UI.toast('📦 Commande honorée +' + eur(o.reward), 'good'); UI.confetti(); refresh();
+    G.stats.orders = num(G.stats.orders, 0) + 1; addXp(20);
+    UI.toast('📦 Commande honorée +' + eur(o.reward) + ' (+2 réputation)', 'good');
+    UI.confetti(); FX.sound('cash');
+    save(); maybeAch(); refresh();
   },
   hire(d) {
-    const b = G.biz[+d.b], max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
-    if (b.emps.length >= max) return UI.toast('Effectif complet.', 'warn');
-    T.cands = Array.from({ length: 4 }, () => ({ n: W.npcs[irnd(0,799)].n, h: +rnd(12,20).toFixed(1) }));
-    UI.modal('<h2>Recruter — ' + esc(b.name) + '</h2>' +
-      T.cands.map((c,i) => '<div class="rowline"><div><div class="lbl">' + esc(c.n) + '</div><div class="det">' + eur(c.h) + '/h</div></div>' +
-      '<button class="btn btn-primary btn-sm" data-act="hireConfirm" data-b="' + d.b + '" data-i="' + i + '">Embaucher</button></div>').join('') +
+    const b = A.bizAt(d); if (!b) return;
+    const max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
+    if (b.emps.length >= max) return UI.toast('Effectif complet (' + max + ').', 'warn');
+    T.cands = Array.from({ length: 4 }, () => ({ n: W.npcs[irnd(0, W.npcs.length - 1)].n, h: +rnd(12, 20).toFixed(1) }));
+    UI.modal('<h2>Recruter — ' + esc(b.name) + '</h2><div class="m-sub">4 candidats se présentent. Salaire horaire négocié.</div>' +
+      T.cands.map((c, i) => '<div class="rowline cand-row"><div class="cand-ava">' + esc(c.n.split(' ').map(x => x[0]).join('').slice(0, 2)) + '</div><div style="flex:1"><div class="lbl">' + esc(c.n) + '</div><div class="det">' + eur(c.h) + '/h · motivé·e</div></div>' +
+        '<button class="btn btn-primary btn-sm" data-act="hireConfirm" data-b="' + d.b + '" data-i="' + i + '">Embaucher</button></div>').join('') +
       '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Fermer</button></div>');
   },
-  hireConfirm(d) { const b = G.biz[+d.b], c = T.cands[+d.i]; if (!c) return; b.emps.push({ n: c.n, h: c.h }); UI.closeModal(); UI.toast(c.n + ' embauché·e', 'good'); refresh(); },
-  fire(d) { const b = G.biz[+d.b]; const e = b.emps.splice(+d.i, 1); UI.toast((e[0]?.n || 'Salarié') + ' licencié·e', 'warn'); refresh(); },
+  hireConfirm(d) {
+    const b = A.bizAt(d); if (!b) return UI.closeModal();
+    const c = T.cands && T.cands[idxOk(d.i, (T.cands || []).length)]; if (!c) return;
+    const max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
+    if (b.emps.length >= max) return UI.toast('Effectif complet.', 'warn');
+    b.emps.push({ n: c.n, h: c.h });
+    UI.closeModal(); FX.sound('win');
+    UI.toast('🤝 ' + esc(c.n) + ' rejoint l’équipe !', 'good');
+    save(); refresh();
+  },
+  fire(d) {
+    const b = A.bizAt(d); if (!b) return;
+    const i = idxOk(d.i, b.emps.length); if (i < 0) return;
+    const e = b.emps.splice(i, 1)[0];
+    FX.sound('back');
+    UI.toast((e ? esc(e.n) : 'Salarié') + ' a quitté l’entreprise.', 'warn'); refresh();
+  },
   buyMandat(d) {
-    const b = G.biz[+d.b];
-    if (balance() < 300) return UI.toast('300 € requis.', 'bad');
-    pay(300, 'Mandat'); b.mandats = (b.mandats||0)+1;
-    UI.toast('Mandat signé', 'good'); refresh();
+    const b = A.bizAt(d); if (!b || b.type !== 'immobilier') return;
+    if (balance() < 300) { FX.sound('error'); return UI.toast('300 € requis par mandat.', 'bad'); }
+    pay(300, 'Mandat de vente', 'biz'); b.mandats = num(b.mandats, 0) + 1;
+    FX.sound('buy');
+    UI.toast('🖊 Mandat signé (' + b.mandats + ' en portefeuille)', 'good'); refresh();
   },
   bankAdj(d) {
-    const b = G.biz[+d.b];
-    if (d.k === 'tc') b.tauxCredit = clamp(b.tauxCredit + +d.v, 1, 12);
-    if (d.k === 'tl') b.tauxLivret = clamp(b.tauxLivret + +d.v, 0, 5);
-    if (d.k === 'mkt') { if (balance() < 1000) return UI.toast('1 000 € requis.', 'bad'); pay(1000, 'Pub'); b.mkt++; UI.toast('Campagne lancée', 'good'); }
+    const b = A.bizAt(d); if (!b || b.type !== 'banque') return;
+    if (d.k === 'tc') b.tauxCredit = clamp(num(b.tauxCredit, 6) + num(d.v, 0), 1, 12);
+    else if (d.k === 'tl') b.tauxLivret = clamp(num(b.tauxLivret, 2) + num(d.v, 0), 0, 5);
+    else if (d.k === 'mkt') {
+      if (balance() < 1000) { FX.sound('error'); return UI.toast('1 000 € requis par campagne.', 'bad'); }
+      pay(1000, 'Campagne pub banque', 'biz'); b.mkt = num(b.mkt, 1, 0, 1000) + 1;
+      UI.toast('📺 Campagne de recrutement lancée', 'good'); FX.sound('buy');
+    }
+    FX.sound('click');
     refresh();
   },
 
   buyHome(d) {
-    const h = DATA.homes[+d.i];
-    if (balance() < h.p) return UI.toast('Apport insuffisant.', 'bad');
-    pay(h.p, 'Achat — ' + h.n); G.stats.spent += h.p;
-    G.houses.push({ i: +d.i, v: h.p, c: h.c, rent: +(h.p*0.004/60).toFixed(2), tenant: false });
-    addXp(60); UI.toast('Propriétaire : ' + h.n, 'good'); UI.confetti(); refresh();
+    const i = idxOk(d.i, DATA.homes.length); if (i < 0) return;
+    const h = DATA.homes[i];
+    if (balance() < h.p) { FX.sound('error'); return UI.toast('Apport insuffisant.', 'bad'); }
+    pay(h.p, 'Achat — ' + h.n, 'out'); G.stats.spent += h.p;
+    G.houses.push({ i, v: h.p, c: h.c, rent: +(h.p * 0.004 / 60).toFixed(2), tenant: false });
+    addXp(60); UI.confetti(); FX.sound('win');
+    UI.toast('🏠 Propriétaire : ' + esc(h.n), 'good');
+    save(); maybeAch(); refresh();
   },
-  rentHome(d) { G.rental = { i: +d.i, loyer: DATA.rentals[+d.i].loyer }; UI.toast('Bail signé', 'good'); refresh(); },
-  cancelRent() { G.rental = null; UI.toast('Bail résilié', 'warn'); refresh(); },
-  sellHome(d) { const h = G.houses[+d.i]; const prix = h.v*0.95; receive(prix, 'Vente immo'); G.houses.splice(+d.i,1); UI.toast('Vendu +' + eur(prix), 'good'); refresh(); },
+  rentHome(d) {
+    const i = idxOk(d.i, DATA.rentals.length); if (i < 0) return;
+    if (G.rental) return UI.toast('Vous avez déjà un bail en cours.', 'warn');
+    G.rental = { i, loyer: DATA.rentals[i].loyer };
+    FX.sound('buy');
+    UI.toast('🔑 Bail signé : ' + esc(DATA.rentals[i].n) + ' (' + eur(DATA.rentals[i].loyer) + '/mois)', 'good');
+    save(); refresh();
+  },
+  cancelRent() {
+    if (!G.rental) return;
+    G.rental = null; FX.sound('back');
+    UI.toast('Bail résilié. Vous voilà sans domicile…', 'warn'); refresh();
+  },
+  sellHome(d) {
+    const i = idxOk(d.i, G.houses.length); if (i < 0) return;
+    const h = G.houses[i];
+    const prix = num(h.v, 0) * 0.95;
+    receive(prix, 'Vente — ' + (DATA.homes[h.i] ? DATA.homes[h.i].n : 'bien'), 'in');
+    G.houses.splice(i, 1);
+    UI.confetti(); FX.sound('cash');
+    UI.toast('🏷 Bien vendu +' + eur(prix), 'good');
+    save(); refresh();
+  },
   rentOut(d) {
-    const h = G.houses[+d.i];
-    if (h.tenant) { h.tenant = false; UI.toast('Congé donné', 'warn'); }
-    else { h.tenant = true; h.rent = +(h.v*0.004/60).toFixed(2); UI.toast('Mis en location', 'good'); }
+    const i = idxOk(d.i, G.houses.length); if (i < 0) return;
+    const h = G.houses[i];
+    if (h.tenant) { h.tenant = false; FX.sound('back'); UI.toast('Congé donné au locataire.', 'warn'); }
+    else { h.tenant = true; h.rent = +(num(h.v, 0) * 0.004 / 60).toFixed(2); FX.sound('buy'); UI.toast('🔑 Bien mis en location (+' + eur(h.rent) + ' / min)', 'good'); maybeAch(); }
     refresh();
   },
 
   buyCar(d) {
-    const c = DATA.cars[+d.i];
-    if (G.cars.includes(+d.i)) return;
-    if (balance() < c.p) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(c.p, 'Achat — ' + c.n); G.stats.spent += c.p; G.cars.push(+d.i); addXp(40);
-    UI.toast(c.n + ' livrée +' + Math.round(c.b*100) + ' %', 'good'); refresh();
+    const i = idxOk(d.i, DATA.cars.length); if (i < 0) return;
+    const c = DATA.cars[i];
+    if (G.cars.includes(i)) return UI.toast('Vous possédez déjà ce modèle.', 'warn');
+    if (balance() < c.p) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(c.p, 'Achat — ' + c.n, 'out'); G.stats.spent += c.p; G.cars.push(i); addXp(40);
+    UI.confetti(); FX.sound('win');
+    UI.toast('🚗 ' + esc(c.n) + ' livrée ! Productivité +' + Math.round(c.b * 100) + ' %', 'good');
+    save(); maybeAch(); refresh();
   },
-  sellCar(d) { const i = +d.i, c = DATA.cars[i]; G.cars = G.cars.filter(x => x !== i); receive(c.p*0.6, 'Vente — ' + c.n); UI.toast(c.n + ' revendue', 'good'); refresh(); },
+  sellCar(d) {
+    const i = idxOk(d.i, DATA.cars.length); if (i < 0 || !G.cars.includes(i)) return;
+    const c = DATA.cars[i];
+    G.cars = G.cars.filter(x => x !== i);
+    receive(c.p * 0.6, 'Revente — ' + c.n, 'in');
+    FX.sound('cash');
+    UI.toast(c.n + ' revendue +' + eur(c.p * 0.6), 'good'); refresh();
+  },
 
   openBank(d) {
+    const known = DATA.banks.find(b => b.id === d.id);
+    if (!known && !isPlayerBank(d.id)) return UI.toast('Banque inconnue.', 'bad');
     if (G.bank.bankId === d.id) return UI.toast('Vous êtes déjà client de cette banque.', 'warn');
+    const switching = !!G.bank.bankId;
     G.bank.bankId = d.id;
-    G.bank.bankName = d.name || null;
-    G.bank.playerRate = d.rate ? parseFloat(d.rate) : null;
-    if (G.cash > 0) { G.bank.compte += G.cash; pushJ('Versement initial', G.cash); G.cash = 0; }
-    UI.cardFx('Ouverture de compte', eur(0));
-    UI.toast('Compte ouvert : ' + (G.bank.bankName || 'banque'), 'good');
-    refresh();
+    G.bank.bankName = (d.name || (known ? known.n : 'Banque')).slice(0, 60);
+    G.bank.playerRate = isPlayerBank(d.id) ? clamp(num(parseFloat(d.rate), 2, 0, 5), 0, 5) : null;
+    if (G.cash > 0) { G.bank.compte += G.cash; pushJ('Versement initial', G.cash, 'bank'); G.cash = 0; }
+    UI.closeModal();
+    UI.cardFx(switching ? 'Transfert de compte' : 'Ouverture de compte', eur(G.bank.compte));
+    FX.sound('cash');
+    UI.toast(switching ? '🏦 Compte transféré : ' + esc(G.bank.bankName) + ' (avoirs conservés)' : '🏦 Compte ouvert : ' + esc(G.bank.bankName), 'good');
+    save(); maybeAch(); refresh();
   },
   leaveBank() {
     if (!G.bank.bankId) return UI.toast('Aucun compte à clôturer.', 'warn');
     const total = G.bank.compte + G.bank.livret;
-    G.cash += total; pushJ('Clôture de compte', total);
+    G.cash += total; pushJ('Clôture de compte', total, 'bank');
     G.bank = { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: G.bank.loans };
     UI.cardFx('Compte clôturé', '+' + eur(total));
-    UI.toast('Compte clôturé, fonds récupérés.', 'warn');
-    refresh();
+    FX.sound('back');
+    UI.toast('Compte clôturé, ' + eur(total) + ' récupérés en liquide.', 'warn');
+    save(); refresh();
   },
   bankDetails(d) { UI.bankDetails(d); },
   deposit() {
-    const v = +((document.getElementById('bankAmt')||{}).value || 0);
-    if (v <= 0 || G.cash < v) return UI.toast('Liquidités insuffisantes.', 'bad');
-    G.cash -= v; G.bank.compte += v; pushJ('Dépôt', v);
-    UI.cardFx('Dépôt sur compte', '+' + eur(v)); refresh();
+    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
+    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
+    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
+    if (G.cash < v) { FX.sound('error'); return UI.toast('Liquidités insuffisantes (' + eur(G.cash) + ').', 'bad'); }
+    G.cash -= v; G.bank.compte += v; pushJ('Dépôt espèces', v, 'bank');
+    UI.cardFx('Dépôt sur compte', '+' + eur(v)); FX.sound('cash'); refresh();
   },
   withdraw() {
-    const v = +((document.getElementById('bankAmt')||{}).value || 0);
-    if (v <= 0 || G.bank.compte < v) return UI.toast('Montant invalide.', 'bad');
-    G.bank.compte -= v; G.cash += v; pushJ('Retrait espèces', -v);
-    UI.cardFx('Retrait espèces', '−' + eur(v)); refresh();
+    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
+    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
+    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
+    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant.', 'bad'); }
+    G.bank.compte -= v; G.cash += v; pushJ('Retrait espèces', -v, 'bank');
+    UI.cardFx('Retrait espèces', '−' + eur(v)); FX.sound('cash'); refresh();
   },
   toLivret() {
-    const v = +((document.getElementById('bankAmt')||{}).value || 0);
-    if (v <= 0 || G.bank.compte < v) return UI.toast('Montant invalide.', 'bad');
+    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
+    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
+    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
+    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant.', 'bad'); }
     if (G.bank.livret + v > 22950) return UI.toast('Plafond Livret A : 22 950 €.', 'warn');
-    G.bank.compte -= v; G.bank.livret += v; pushJ('Vers Livret A', -v);
-    UI.cardFx('Vers Livret A', '−' + eur(v)); refresh();
+    G.bank.compte -= v; G.bank.livret += v; pushJ('Compte → Livret A', -v, 'bank');
+    UI.cardFx('Vers Livret A', '−' + eur(v)); FX.sound('cash'); refresh();
   },
   fromLivret() {
-    const v = +((document.getElementById('bankAmt')||{}).value || 0);
-    if (v <= 0 || G.bank.livret < v) return UI.toast('Livret A insuffisant.', 'bad');
-    G.bank.livret -= v; G.bank.compte += v; pushJ('Livret A → compte', v);
-    UI.cardFx('Livret A → compte', '+' + eur(v)); refresh();
+    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
+    const v = Math.round(num(((document.getElementById('bankAmt') || {}).value), 0) * 100) / 100;
+    if (!(v > 0)) return UI.toast('Montant invalide.', 'bad');
+    if (G.bank.livret < v) { FX.sound('error'); return UI.toast('Livret A insuffisant.', 'bad'); }
+    G.bank.livret -= v; G.bank.compte += v; pushJ('Livret A → compte', v, 'bank');
+    UI.cardFx('Livret A → compte', '+' + eur(v)); FX.sound('cash'); refresh();
   },
   loanTake(d) {
-    const v = +((document.getElementById('loanAmt')||{}).value || 0);
-    if (v < 1000) return UI.toast('Minimum : 1 000 €.', 'bad');
-    const L = DATA.loans.find(x => x.id === d.t);
-    const mois = Math.max(12, Math.round(v/800));
-    const total = v * (1 + L.rate/100 * mois/12);
-    G.bank.loans.push({ n: L.n, total, mens: +(total/mois).toFixed(2), reste: +total.toFixed(2) });
-    receive(v, 'Crédit — ' + L.n);
+    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
+    const v = Math.floor(num(((document.getElementById('loanAmt') || {}).value), 0));
+    if (!(v >= 1000)) return UI.toast('Minimum : 1 000 €.', 'bad');
+    if (v > 5e6) return UI.toast('Maximum : 5 000 000 €.', 'warn');
+    const L = DATA.loans.find(x => x.id === d.t); if (!L) return;
+    if (G.bank.loans.length >= 6) return UI.toast('Maximum 6 crédits en cours.', 'warn');
+    const mois = Math.max(12, Math.round(v / 800));
+    const total = v * (1 + L.rate / 100 * mois / 12);
+    G.bank.loans.push({ n: L.n, total, mens: +(total / mois).toFixed(2), reste: +total.toFixed(2) });
+    receive(v, 'Crédit — ' + L.n, 'bank');
     UI.cardFx('Crédit ' + L.n, '+' + eur(v));
-    UI.toast('Crédit accordé +' + eur(v), 'good'); refresh();
+    FX.sound('cash');
+    UI.toast('🏦 Crédit ' + L.n + ' accordé +' + eur(v) + ' (' + mois + ' mois à ' + eur(total / mois) + ')', 'good');
+    refresh();
   },
   loanRepay(d) {
-    const L = G.bank.loans[+d.i];
-    if (balance() < L.reste) return UI.toast('Il reste ' + eur(L.reste) + '.', 'bad');
-    pay(L.reste, 'Remboursement — ' + L.n); G.bank.loans.splice(+d.i,1);
+    const i = idxOk(d.i, G.bank.loans.length); if (i < 0) return;
+    const L = G.bank.loans[i];
+    if (balance() < L.reste) { FX.sound('error'); return UI.toast('Il reste ' + eur(L.reste) + ' à solder.', 'bad'); }
+    pay(L.reste, 'Remboursement anticipé — ' + L.n, 'bank');
+    G.bank.loans.splice(i, 1);
     UI.cardFx('Crédit soldé', '−' + eur(L.reste));
-    UI.toast('Crédit soldé ✓', 'good'); refresh();
+    FX.sound('win');
+    UI.toast('✅ Crédit « ' + esc(L.n) + ' » soldé', 'good');
+    maybeAch(); refresh();
   },
 
   insure(d) {
+    const ins = DATA.insurers.find(x => x.id === d.id); if (!ins) return;
     const i = G.insurances.indexOf(d.id);
-    if (i >= 0) { G.insurances.splice(i,1); UI.toast('Assurance résiliée', 'warn'); }
-    else { G.insurances.push(d.id); UI.toast('Assuré·e chez ' + DATA.insurers.find(x => x.id === d.id).n, 'good'); }
-    refresh();
+    if (i >= 0) { G.insurances.splice(i, 1); FX.sound('back'); UI.toast('Assurance résiliée : ' + ins.n, 'warn'); }
+    else { G.insurances.push(d.id); FX.sound('buy'); UI.toast('🛡 Assuré·e chez ' + ins.n + ' (' + Math.round(ins.cov * 100) + ' % de couverture)', 'good'); }
+    save(); refresh();
   },
 
-  chooseDoctor(d) { const doc = DATA.doctors.find(x => x.id === d.id); if (!doc) return; G.health.doctor = d.id; UI.toast('Médecin traitant : ' + doc.n, 'good'); refresh(); },
+  chooseDoctor(d) {
+    const doc = DATA.doctors.find(x => x.id === d.id); if (!doc) return;
+    G.health.doctor = d.id; FX.sound('click');
+    UI.toast('🩺 Médecin traitant : ' + doc.n, 'good'); refresh();
+  },
   buyVaccine(d) {
     const v = DATA.vaccines.find(x => x.id === d.id); if (!v) return;
-    if (G.health.vaccines.includes(d.id)) return UI.toast('Déjà vacciné.', 'warn');
-    if (balance() < v.cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(v.cost, 'Vaccin — ' + v.n); G.health.vaccines.push(d.id);
-    UI.toast('💉 ' + v.n + ' administré', 'good'); refresh();
+    if (G.health.vaccines.includes(d.id)) return UI.toast('Déjà vacciné·e.', 'warn');
+    if (balance() < v.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(v.cost, 'Vaccin — ' + v.n, 'out'); G.health.vaccines.push(d.id);
+    FX.sound('buy');
+    UI.toast('💉 ' + v.n + ' administré', 'good');
+    maybeAch(); refresh();
   },
   bookAppointment() {
     if (!G.health.doctor) return UI.toast('Choisissez d’abord un médecin traitant.', 'warn');
     if (!G.health.sick) return UI.toast('Vous n’êtes pas malade.', 'warn');
-    const doc = DATA.doctors.find(x => x.id === G.health.doctor);
+    const doc = DATA.doctors.find(x => x.id === G.health.doctor); if (!doc) return;
     const cost = doc.fee * (1 - cov());
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Consultation — ' + doc.n);
-    G.health.sick = false; G.health.rdv = (G.health.rdv||0) + 1;
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(cost, 'Consultation — ' + doc.n, 'out');
+    G.health.sick = false; G.health.rdv = num(G.health.rdv, 0) + 1;
     G.vitals.sante = clamp(G.vitals.sante + 30 * doc.quality, 0, 100);
-    UI.pulseVital('rowSante'); UI.confetti();
-    UI.toast('🩺 ' + doc.n + ' vous a soigné (−' + eur(cost) + ' après remboursement)', 'good');
-    refresh();
+    UI.pulseVital('rowSante'); UI.confetti(); FX.sound('win');
+    UI.toast('🩺 ' + doc.n + ' vous a soigné·e (−' + eur(cost) + ' après remboursement)', 'good');
+    save(); refresh();
   },
 
   lotto() {
     const L = DATA.lotto;
-    if (Date.now() < (G.lottoCd || 0)) return UI.toast('Patientez.', 'warn');
-    if (balance() < L.cost) return UI.toast(L.cost + ' € requis.', 'bad');
-    pay(L.cost, 'Ticket loto'); G.lottoCd = Date.now() + L.cd*1000; mission('lotto', 1);
+    if (Date.now() < num(G.lottoCd, 0)) return UI.toast('Patientez avant le prochain tirage.', 'warn');
+    if (balance() < L.cost) { FX.sound('error'); return UI.toast(L.cost + ' € requis.', 'bad'); }
+    pay(L.cost, 'Ticket de loto', 'out'); G.lottoCd = Date.now() + L.cd * 1000; mission('lotto', 1);
     const chance = Math.min(0.5, L.chance + skillBonus('luck'));
-    if (Math.random() < chance) { const g = rnd(L.min, L.max); receive(g, 'Gain loto'); G.stats.lottoWins = (G.stats.lottoWins||0)+1; addXp(30); UI.toast('🍀 GAGNÉ +' + eur(g), 'good'); UI.confetti(); }
-    else UI.toast('Pas de chance cette fois.', '');
+    if (Math.random() < chance) {
+      const g = rnd(L.min, L.max);
+      receive(g, 'Gain loto', 'in'); G.stats.lottoWins = num(G.stats.lottoWins, 0) + 1; addXp(30);
+      UI.confetti(); FX.sound('win');
+      UI.toast('🍀 GAGNÉ ! +' + eur(g), 'good');
+      maybeAch();
+    } else { FX.sound('back'); UI.toast('🎱 Pas de chance cette fois…', ''); }
     refresh();
   },
 
-  illUnlock() { if (balance() < DATA.illEntry) return UI.toast(DATA.illEntry + ' € requis.', 'bad'); pay(DATA.illEntry, 'Droit d’entrée'); G.ill.unlocked = true; UI.toast('Réseau débloqué', 'warn'); refresh(); },
+  illUnlock() {
+    if (G.ill.unlocked) return;
+    if (balance() < DATA.illEntry) { FX.sound('error'); return UI.toast(DATA.illEntry + ' € de droit d’entrée requis.', 'bad'); }
+    pay(DATA.illEntry, 'Droit d’entrée réseau', 'ill'); G.ill.unlocked = true;
+    FX.sound('jail');
+    UI.toast('🕶 Le réseau vous ouvre ses portes…', 'warn');
+    maybeAch(); refresh();
+  },
   illDo(d) {
-    const a = DATA.ill.find(x => x.id === d.id);
-    if (a.reqBiz && !ownsBiz(a.reqBiz)) return UI.toast('Nécessite une banque.', 'bad');
-    if (Date.now() < (G.ill.cd[a.id]||0)) return UI.toast('En recharge.', 'warn');
-    if (balance() < a.cost) return UI.toast('Mise insuffisante.', 'bad');
-    pay(a.cost, 'Mise — ' + a.n); G.ill.cd[a.id] = Date.now() + a.cd*1000;
-    if (Math.random() < a.risk) { G.ill.heat = Math.min(100, G.ill.heat + a.heat*1.5); const amende = a.cost*1.5; pay(amende, 'Amende'); UI.toast('Échec −' + eur(amende), 'bad'); }
-    else { const gain = rnd(a.gain[0], a.gain[1]); receive(gain, 'Gain — ' + a.n); G.ill.heat = Math.min(100, G.ill.heat + a.heat); UI.toast(a.n + ' +' + eur(gain), 'good'); }
-    if (G.ill.heat >= 100) { G.jail = Date.now() + 60000; G.ill.heat = 30; G.stats.jailed = true; const am = Math.max(500, balance()*0.1); pay(am, 'Amende interpellation'); UI.toast('GARDE À VUE 60 s −' + eur(am), 'bad'); }
+    const a = DATA.ill.find(x => x.id === d.id); if (!a) return;
+    if (!G.ill.unlocked) return UI.toast('Réseau non débloqué.', 'bad');
+    if (a.reqBiz && !ownsBiz(a.reqBiz)) return UI.toast('Nécessite de posséder une banque.', 'bad');
+    if (Date.now() < num(G.ill.cd[a.id], 0)) return UI.toast('Opération en recharge.', 'warn');
+    if (balance() < a.cost) { FX.sound('error'); return UI.toast('Mise insuffisante (' + eur(a.cost) + ').', 'bad'); }
+    pay(a.cost, 'Mise — ' + a.n, 'ill'); G.ill.cd[a.id] = Date.now() + a.cd * 1000;
+    if (Math.random() < a.risk) {
+      G.ill.heat = Math.min(100, G.ill.heat + a.heat * 1.5);
+      const amende = a.cost * 1.5;
+      pay(amende, 'Amende — échec ' + a.n, 'ill');
+      UI.screenShake(); FX.sound('error');
+      UI.toast('❌ ' + a.n + ' a échoué −' + eur(amende) + ' (chaleur +' + Math.round(a.heat * 1.5) + ')', 'bad');
+    } else {
+      const gain = rnd(a.gain[0], a.gain[1]);
+      receive(gain, 'Gain — ' + a.n, 'ill');
+      G.ill.heat = Math.min(100, G.ill.heat + a.heat);
+      if (a.id === 'braquage') G.stats.braquages = num(G.stats.braquages, 0) + 1;
+      FX.sound('cash');
+      UI.toast('🕶 ' + a.n + ' réussi +' + eur(gain), 'good');
+      maybeAch();
+    }
+    if (G.ill.heat >= 100) {
+      G.jail = Date.now() + 60000; G.ill.heat = 30; G.stats.jailed = true;
+      const am = Math.max(500, balance() * 0.1);
+      pay(am, 'Amende interpellation', 'ill');
+      UI.screenShake(); FX.sound('jail');
+      UI.toast('🚔 GARDE À VUE — 60 s d’activités suspendues, amende de ' + eur(am), 'bad');
+      maybeAch();
+    }
     refresh();
   },
-  bribe() { if (balance() < 800) return UI.toast('800 € requis.', 'bad'); pay(800, 'Pot-de-vin'); G.ill.heat = Math.max(0, G.ill.heat - 35); UI.toast('Chaleur −35', 'good'); refresh(); },
+  bribe() {
+    if (balance() < 800) { FX.sound('error'); return UI.toast('800 € requis pour le pot-de-vin.', 'bad'); }
+    pay(800, 'Pot-de-vin', 'ill');
+    G.ill.heat = Math.max(0, G.ill.heat - 35);
+    FX.sound('buy');
+    UI.toast('🤫 Chaleur −35. Discrétion retrouvée.', 'good'); refresh();
+  },
+  payBail() {
+    if (!inJail()) return;
+    const bail = Math.max(200, Math.round(Math.abs(balance()) * 0.1));
+    if (balance() < bail) { FX.sound('error'); return UI.toast('Caution insuffisante : ' + eur(bail) + '.', 'bad'); }
+    pay(bail, 'Caution de sortie', 'ill');
+    G.jail = 0;
+    FX.sound('win');
+    UI.toast('💶 Caution payée (' + eur(bail) + ') : vous êtes libre !', 'good');
+    refresh();
+  },
 
   claimMission(d) {
-    const m = G.missions.list[+d.i]; if (!m || m.claimed || m.prog < m.tgt) return;
-    m.claimed = true; G.stats.missionsDone = (G.stats.missionsDone||0)+1;
-    receive(m.rew, 'Défi — ' + m.n); addXp(Math.round(m.rew/2));
-    UI.toast('Défi +' + eur(m.rew), 'good'); UI.confetti(); refresh();
+    const i = idxOk(d.i, (G.missions.list || []).length); if (i < 0) return;
+    const m = G.missions.list[i];
+    if (!m || m.claimed || m.prog < m.tgt) return;
+    m.claimed = true; G.stats.missionsDone = num(G.stats.missionsDone, 0) + 1;
+    receive(m.rew, 'Défi — ' + m.n, 'in'); addXp(Math.round(m.rew / 2));
+    UI.confetti(); FX.sound('win');
+    UI.toast('🎯 Défi accompli +' + eur(m.rew), 'good');
+    maybeAch(); refresh();
   },
   claimQuest(d) {
-    const q = G.quests.list[+d.i]; if (!q || q.claimed || q.prog < q.tgt) return;
-    q.claimed = true; receive(q.rew, 'Quête — ' + q.n); addXp(q.xp || 30);
-    UI.toast('Quête +' + eur(q.rew) + ' +' + (q.xp||30) + ' XP', 'good'); UI.confetti(); refresh();
+    const i = idxOk(d.i, (G.quests.list || []).length); if (i < 0) return;
+    const q = G.quests.list[i];
+    if (!q || q.claimed || q.prog < q.tgt) return;
+    q.claimed = true;
+    receive(q.rew, 'Quête — ' + q.n, 'in'); addXp(q.xp || 30);
+    UI.confetti(); FX.sound('win');
+    UI.toast('📜 Quête accomplie +' + eur(q.rew) + ' · +' + (q.xp || 30) + ' XP', 'good');
+    maybeAch(); refresh();
   },
 
   buySkill(d) {
     const s = DATA.skills.find(x => x.id === d.id); if (!s) return;
     const lvl = skillLvl(s.id);
-    if (lvl >= s.maxLvl) return UI.toast('Niveau max atteint.', 'warn');
+    if (lvl >= s.maxLvl) return UI.toast('Niveau maximum atteint.', 'warn');
     const cost = Math.round(s.costBase * Math.pow(s.costGrow, lvl));
-    if (balance() < cost) return UI.toast('Fonds insuffisants.', 'bad');
-    pay(cost, 'Compétence — ' + s.n); G.skills[s.id] = lvl + 1; addXp(25);
-    UI.toast(s.n + ' niveau ' + (lvl+1), 'good'); refresh();
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    pay(cost, 'Compétence — ' + s.n, 'out'); G.skills[s.id] = lvl + 1; addXp(25);
+    UI.confetti(); FX.sound('win');
+    UI.toast(s.icon + ' ' + s.n + ' → niveau ' + (lvl + 1) + '/' + s.maxLvl, 'good');
+    save(); maybeAch(); refresh();
   },
 
   buyPack(d) {
     const p = DATA.packs.find(x => x.id === d.id); if (!p) return;
-    G.pendingPack = p.id; window.open(p.stripe, '_blank', 'noopener');
-    UI.toast('Paiement ouvert. Cliquez « J’ai payé » une fois réglé.', 'good'); refresh();
+    G.pendingPack = p.id;
+    window.open(p.stripe, '_blank', 'noopener');
+    UI.toast('Paiement Stripe ouvert. Cliquez « J’ai payé » une fois réglé.', 'good'); refresh();
   },
   confirmPack() {
     if (!G.pendingPack) return UI.toast('Aucun paiement en attente.', 'warn');
     const p = DATA.packs.find(x => x.id === G.pendingPack); G.pendingPack = null;
-    receive(p.amount, 'Pack — ' + p.n); G.stats.premium += p.amount;
-    UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount)); UI.toast('+' + eur0(p.amount) + ' crédités', 'good'); UI.confetti(); refresh();
+    if (!p) return UI.toast('Pack inconnu.', 'bad');
+    receive(p.amount, 'Pack — ' + p.n, 'in'); G.stats.premium += p.amount;
+    UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount));
+    UI.confetti(); FX.sound('win');
+    UI.toast('💎 +' + eur0(p.amount) + ' crédités !', 'good');
+    save(); refresh();
   },
   cancelPack() { G.pendingPack = null; UI.toast('Achat annulé.', ''); refresh(); },
 
   deleteAccount() {
     if (!confirm('SUPPRIMER DÉFINITIVEMENT votre compte et toutes vos données ?')) return;
-    if (!confirm('Cette action est irréversible. Confirmer ?')) return;
+    if (!confirm('Cette action est irréversible. Confirmer la suppression ?')) return;
     DB.deleteAccount(DB.session()).then(() => location.reload());
   },
 
   tutoNext() { UI.tutoNext(); },
   tutoSkip() { UI.tutoSkip(); },
   closeModal() { UI.closeModal(); },
-  resetSave() { if (!confirm('Effacer votre vie et recommencer ?')) return; DB.deleteSave(DB.session()); DB.logout(); location.reload(); },
+  resetSave() {
+    if (!confirm('Effacer votre vie et recommencer à zéro ?')) return;
+    DB.deleteSave(DB.session()); DB.logout(); location.reload();
+  },
   logout() { save(); DB.logout(); location.reload(); }
 };
+function sparkAt(cardEl) {
+  try {
+    const r = cardEl.getBoundingClientRect();
+    FX.spark(r.left + r.width / 2, r.top + r.height / 2, '#f3c76e', 12);
+  } catch (e) {}
+}
 
 function offerModal() {
-  const c = T.offer.c, o = T.offer.o, job = DATA.companies[c].o[o];
+  if (!T.offer) return;
+  const c = idxOk(T.offer.c, DATA.companies.length);
+  if (c < 0) { T.offer = null; return; }
+  const comp = DATA.companies[c];
+  const o = idxOk(T.offer.o, comp.o.length);
+  if (o < 0) { T.offer = null; return; }
+  const job = comp.o[o];
   const netP = jobNetHourly(job[1], 'plein'), netT = jobNetHourly(job[1], 'partiel');
   const okP = canTake('plein'), okT = canTake('partiel');
-  UI.modal('<h2>Contrat de travail</h2><div class="m-sub">' + esc(job[0]) + ' · ' + esc(DATA.companies[c].n) + ' · ' + eur(job[1]) + ' brut/h</div>' +
+  UI.modal('<h2>Contrat de travail</h2><div class="m-sub">' + esc(job[0]) + ' · ' + esc(comp.n) + ' · ' + eur(job[1]) + ' brut/h</div>' +
     '<div class="mode-cards">' +
-    '<div class="mode-card ' + (T.offerMode === 'plein' ? 'sel' : '') + ' ' + (okP ? '' : 'dis') + '" data-act="pickMode" data-m="plein"><div class="m-t">Temps plein</div><div class="m-d">100 % · exclusif<br>' + eur(netP) + '/h net</div></div>' +
-    '<div class="mode-card ' + (T.offerMode === 'partiel' ? 'sel' : '') + ' ' + (okT ? '' : 'dis') + '" data-act="pickMode" data-m="partiel"><div class="m-t">Temps partiel</div><div class="m-d">50 % · cumulable<br>' + eur(netT) + '/h net</div></div>' +
+    '<div class="mode-card ' + (T.offerMode === 'plein' ? 'sel' : '') + ' ' + (okP ? '' : 'dis') + '" data-act="pickMode" data-m="plein"><div class="m-t">Temps plein</div><div class="m-d">100 % · exclusif<br><b class="money">' + eur(netP) + '/h</b> net</div></div>' +
+    '<div class="mode-card ' + (T.offerMode === 'partiel' ? 'sel' : '') + ' ' + (okT ? '' : 'dis') + '" data-act="pickMode" data-m="partiel"><div class="m-t">Temps partiel</div><div class="m-d">50 % · cumulable<br><b class="money">' + eur(netT) + '/h</b> net</div></div>' +
     '</div>' +
-    '<table class="t"><tr><td>Charge actuelle</td><td class="mono">' + Math.round(totalLoad()*100) + ' % / 100 %</td></tr></table>' +
+    '<table class="t"><tr><td>Charge actuelle</td><td class="mono">' + Math.round(totalLoad() * 100) + ' % / 100 %</td></tr>' +
+    '<tr><td>Estimation mensuelle (temps choisi)</td><td class="money">' + eur(jobNetHourly(job[1], T.offerMode) * 151.67) + '</td></tr></table>' +
     '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Refuser</button>' +
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat','buyFood','train','offer','sign','openCreate','createBiz','buyMat','craft','buyStock','priceAdj','hire','hireConfirm','buyHome','rentHome','buyCar','deposit','withdraw','toLivret','fromLivret','loanTake','loanRepay','illDo','bribe','upgrade','mktDo','orderFill','lotto','buySkill','claimMission','claimQuest','buyVaccine','bookAppointment','openBank','leaveBank','doSendMoney','doAnnounce'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack'];
 
+/* ── sauvegarde ── */
+let saveInFlight = false;
 function save() {
-  if (!G) return;
+  if (!G || saveInFlight) return;
   G.last = Date.now();
-  DB.saveGame(DB.session(), G).then(ok => { if (ok) UI.flashSave(); });
+  saveInFlight = true;
+  DB.saveGame(DB.session(), G).then(ok => {
+    saveInFlight = false;
+    if (ok) { G.lastSavedAt = Date.now(); UI.flashSave(); }
+  }).catch(() => { saveInFlight = false; });
 }
 
+/* ── progression hors-ligne ── */
 function offlineProgress(s) {
-  let dt = (Date.now() - (s.last || Date.now())) / 1000;
-  if (dt < 30) return null;
-  dt = Math.min(dt, 8*3600);
-  const res = { dt, gains: 0 };
-  const add = g => { if (s.bank.bankId) s.bank.compte += g; else s.cash += g; res.gains += g; };
-  s.jobs.forEach(j => { const load = j.mode === 'plein' ? 1 : 0.5; const net = (j.h/60)*load*0.78*(1 - tauxPAS(j.h*2080*load*0.78)); add(net*dt*0.5); });
-  s.biz.forEach(b => add((b.emps.length+1)*dt*0.08));
-  s.vitals.faim = Math.max(15, s.vitals.faim - dt*0.02);
-  s.vitals.soif = Math.max(15, s.vitals.soif - dt*0.025);
-  if (s.training && Date.now() >= s.training.end) { const fm = DATA.form.find(x => x.id === s.training.id); s.diplomas.push(fm.id); s.training = null; res.diploma = fm.n; }
-  return res;
+  try {
+    let dt = (Date.now() - num(s && s.last, Date.now())) / 1000;
+    if (!(dt >= 30)) return null;
+    dt = Math.min(dt, 8 * 3600);
+    const res = { dt, gains: 0, jobs: 0, biz: 0, loyers: 0, interets: 0 };
+    const add = (g, bucket) => {
+      g = Math.max(0, num(g, 0));
+      if (s.bank && s.bank.bankId) s.bank.compte += g; else s.cash = num(s.cash, 0) + g;
+      res.gains += g; if (bucket) res[bucket] += g;
+    };
+    (Array.isArray(s.jobs) ? s.jobs : []).forEach(j => {
+      const load = j && j.mode === 'plein' ? 1 : 0.5;
+      const net = (num(j && j.h, 12) / 60) * load * 0.78 * (1 - tauxPAS(num(j && j.h, 12) * 2080 * load * 0.78));
+      add(net * dt * 0.5, 'jobs');
+    });
+    (Array.isArray(s.biz) ? s.biz : []).forEach(b => add(((Array.isArray(b && b.emps) ? b.emps.length : 0) + 1) * dt * 0.08, 'biz'));
+    (Array.isArray(s.houses) ? s.houses : []).forEach(h => { if (h && h.tenant) add(num(h.rent, 0) * (dt / 6) * 0.5, 'loyers'); });
+    if (s.bank && s.bank.bankId && num(s.bank.livret, 0) > 0) {
+      const rate = isPlayerBank(s.bank.bankId) ? num(s.bank.playerRate, 2, 0, 5) : ((DATA.banks.find(x => x.id === s.bank.bankId) || {}).lv || 0);
+      if (rate > 0) {
+        const i = s.bank.livret * rate / 100 * (dt / (30 * 86400));
+        s.bank.livret = Math.min(22950, s.bank.livret + i);
+        res.interets += i; res.gains += i;
+      }
+    }
+    if (s.vitals && typeof s.vitals === 'object') {
+      s.vitals.faim = Math.max(15, num(s.vitals.faim, 70) - dt * 0.02);
+      s.vitals.soif = Math.max(15, num(s.vitals.soif, 65) - dt * 0.025);
+    }
+    if (s.training && Date.now() >= num(s.training.end, Infinity)) {
+      const fm = DATA.form.find(x => x.id === s.training.id);
+      if (fm && Array.isArray(s.diplomas) && !s.diplomas.includes(fm.id)) s.diplomas.push(fm.id);
+      s.training = null; res.diploma = fm ? fm.n : 'Formation';
+    }
+    return res;
+  } catch (e) { return null; }
 }

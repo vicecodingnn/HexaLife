@@ -3,8 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c1317">
 <title>HEXALIFE — Simulateur de vie française</title>
-<meta name="description" content="Simulateur de vie et d'économie française en temps réel.">
+<meta name="description" content="Simulateur de vie et d'économie française en temps réel : emplois, entreprises, banque, immobilier, marché noir, succès et météo vivante.">
+<meta property="og:title" content="HEXALIFE — Simulateur de vie française">
+<meta property="og:description" content="Vivez une vie française complète : CDI, boulangerie, banque, immobilier… en temps réel.">
+<meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230f1b21'/><path d='M8 22 L16 10 L24 22 Z' fill='%23e8b04b'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,14 +17,20 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<noscript><div style="padding:40px;text-align:center;color:#e9eef1;background:#0c1317;height:100vh">HEXALIFE nécessite JavaScript pour fonctionner.</div></noscript>
 
 <!-- ══════════ INTRO ══════════ -->
 <div id="scr-intro" class="screen active">
   <div class="intro-sky"></div>
   <div class="intro-dawn" id="introDawn"></div>
+  <div class="cloud c1"></div>
+  <div class="cloud c2"></div>
+  <div class="cloud c3"></div>
   <div class="citylayer far" id="cityFar"></div>
   <div class="citylayer near" id="cityNear"></div>
   <div class="intro-ground"></div>
+  <div class="car carA"></div>
+  <div class="car carB"></div>
   <div class="walker" id="walker">
     <svg viewBox="0 0 60 92" width="82" height="124" aria-hidden="true">
       <g class="w-root">
@@ -51,6 +62,7 @@
       <ul class="auth-points">
         <li>Économie simulée en temps réel, en euros</li>
         <li>Fiscalité française : prélèvement à la source, IS, URSSAF</li>
+        <li>Succès, récompenses quotidiennes et météo vivante</li>
         <li>800 citoyens actifs : clients, salariés, patrons</li>
         <li>Défis, niveaux, tutoriel guidé et marché noir</li>
       </ul>
@@ -84,6 +96,7 @@
 <!-- ══════════ JEU ══════════ -->
 <div id="scr-app" class="screen">
   <div class="app-skyline" id="appSky"></div>
+  <canvas id="fxCanvas" aria-hidden="true"></canvas>
 
   <header class="topbar">
     <div class="tb-left">
@@ -101,9 +114,13 @@
         <div class="tb-cash" id="tbCash" title="Solde principal">0,00 €</div>
         <span class="tb-cash-lbl" id="tbCashLbl">liquide</span>
       </div>
-      <button class="btn btn-plus" data-act="tab" data-id="plus" title="Acheter de l'argent (€)">+</button>
+      <button class="btn btn-plus" data-act="tab" data-id="plus" title="Boutique : acheter de l'argent (€)">+</button>
     </div>
-    <button class="btn btn-ghost btn-sm" data-act="logout" title="Déconnexion">Sortir</button>
+    <div class="tb-tools">
+      <button class="btn btn-ghost btn-sm btn-ico" data-act="openSettings" title="Réglages (sons, particules…)" aria-label="Réglages">⚙</button>
+      <button class="btn btn-ghost btn-sm btn-ico" data-act="openHelp" title="Aide (F1)" aria-label="Aide">?</button>
+      <button class="btn btn-ghost btn-sm" data-act="logout" title="Déconnexion">Sortir</button>
+    </div>
   </header>
 
   <div class="ticker"><div class="ticker-track" id="ticker"></div></div>
@@ -119,7 +136,7 @@
 
   <div class="hud">
     <aside class="rail-wrap">
-      <nav class="rail-scroll" id="rail"></nav>
+      <nav class="rail-scroll" id="rail" aria-label="Navigation principale"></nav>
       <!-- Jauges vitales : ancrées tout en bas à gauche -->
       <div class="vitals">
         <div class="v-row" id="rowSante"><span class="v-ico" style="color:var(--green)">♥</span><span class="v-name">Santé</span>
@@ -134,11 +151,23 @@
     <main class="view" id="view"></main>
   </div>
 
+  <canvas id="fxTop" aria-hidden="true"></canvas>
+
+  <div id="lvlOv" aria-hidden="true">
+    <div class="lvl-card">
+      <div class="lvl-rays"></div>
+      <div class="lvl-ring"></div>
+      <div class="lvl-txt">NIVEAU</div>
+      <div class="lvl-n">2</div>
+    </div>
+  </div>
+
   <div id="jailOv" class="jail" hidden>
     <div class="jail-card">
       <div class="jail-title">GARDE À VUE</div>
       <p>La police vous a interpellé. Vos activités sont suspendues.</p>
       <div class="jail-timer" id="jailT">60</div>
+      <button id="jailBail" class="btn btn-primary" data-act="payBail" style="margin-top:14px">💶 Payer la caution et sortir</button>
     </div>
   </div>
 
@@ -147,19 +176,21 @@
       <div class="tuto-step" id="tutoStepLbl">1/9</div>
       <h3 id="tutoTitle"></h3>
       <p id="tutoText"></p>
+      <div class="tuto-dots" id="tutoDots"></div>
       <div class="tuto-actions">
-        <button class="btn btn-ghost btn-sm" data-act="tutoSkip">Passer le tutoriel</button>
+        <button class="btn btn-ghost btn-sm" data-act="tutoSkip">Passer</button>
         <button class="btn btn-primary btn-sm" data-act="tutoNext" id="tutoNext">Suivant →</button>
       </div>
     </div>
   </div>
 
-  <div id="toasts"></div>
+  <div id="toasts" aria-live="polite"></div>
   <div id="modalRoot"></div>
 </div>
 
 <script src="js/db.js"></script>
 <script src="js/data.js"></script>
+<script src="js/fx.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
