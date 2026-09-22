@@ -139,6 +139,31 @@ try {
   await sleep(900);
   await shot('13-banque-compte');
 
+  // ── TERMINAL 3D : insertion de la carte bleue, virement vers Livret A, ticket, éjection ──
+  await page.click('[data-card="cb"]');
+  await sleep(1500);
+  await shot('13b-terminal-carte-inseree');
+  const screenOn = await page.evaluate(() => !!document.querySelector('.term-screen.on'));
+  if (!screenOn) errors.push('terminal : écran non allumé après insertion');
+  await page.fill('#termAmt', '500');
+  await page.click('[data-term="act"][data-from="compte"][data-to="livret"]');
+  await sleep(1100);
+  await shot('13c-terminal-ticket');
+  const livAfter = await page.evaluate(() => G.bank.livret);
+  if (!(livAfter >= 500)) errors.push('terminal : virement Livret A échoué (' + livAfter + ')');
+  await page.click('[data-term="statement"]');
+  await sleep(400);
+  await shot('13d-terminal-releve');
+  await page.click('[data-term="eject"]');
+  await sleep(1500);
+  const termGone = await page.evaluate(() => !document.querySelector('.term-ov'));
+  if (!termGone) errors.push('terminal : overlay resté ouvert après éjection');
+
+  // tableau de bord avec le portefeuille de cartes
+  await page.click('[data-id="vie"]');
+  await sleep(700);
+  await shot('13e-accueil-portefeuille');
+
   // entreprise : fonder une boulangerie
   await page.evaluate(() => { G.diplomas.push('cap_bl'); G.cash = 0; G.bank.compte = 250000; UI.render(true); });
   await page.click('[data-id="entreprises"]');

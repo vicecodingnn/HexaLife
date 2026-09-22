@@ -239,7 +239,62 @@ run('régressions v11.1', `
   G.jobs = []; G.biz = []; G.inv = {};
   G.bank = { bankId:null, bankName:null, playerRate:null, compte:0, livret:0, loans:[] };
   G.cash = 5e6;
+
+  // 10) CARTES & TERMINAL : virements génériques, gel, plafond, premium
+  A.openBank({id:'ce', name:"Caisse d'Épargne", rate:'3.0'});
+  G.bank.compte = 5000; G.cash = 1000;
+  if (!G.bank.cardCb || G.bank.cardCb.plafond !== 2000) throw new Error('carte CB non initialisée');
+  const ti = document.createElement('input'); ti.id = 'termAmt'; document.body.appendChild(ti);
+  ti.value = '1 200,50';
+  A.moveMoney({from:'compte', to:'livret'});
+  if (Math.abs(G.bank.livret - 1200.5) > 0.01) throw new Error('moveMoney virgule/espace : ' + G.bank.livret);
+  A.moveMoney({from:'compte', to:'compte'}); // invalide : rien ne bouge
+  if (Math.abs(G.bank.livret - 1200.5) > 0.01) throw new Error('moveMoney from==to a modifié quelque chose');
+  // plafond : retrait DAB au-dessus du plafond refusé
+  A.setPlafond({v:'300'});
+  ti.value = '500';
+  const cAv = G.bank.compte;
+  A.moveMoney({from:'compte', to:'cash'});
+  if (G.bank.compte !== cAv) throw new Error('plafond non respecté');
+  A.setPlafond({v:'2000'});
+  A.moveMoney({from:'compte', to:'cash'});
+  if (G.bank.compte === cAv) throw new Error('retrait sous plafond refusé à tort');
+  // gel : bloque les mouvements depuis le compte et les paiements carte
+  A.toggleFreeze({card:'cb'});
+  if (!G.stats.frozeOnce) throw new Error('stats.frozeOnce non marqué');
+  const c2 = G.bank.compte;
+  ti.value = '100';
+  A.moveMoney({from:'compte', to:'livret'});
+  if (G.bank.compte !== c2) throw new Error('gel non bloquant sur moveMoney');
+  const invAv = JSON.stringify(G.inv);
+  A.buyFood({id:'baguette'});
+  if (JSON.stringify(G.inv) !== invAv) throw new Error('gel non bloquant sur achats');
+  A.toggleFreeze({card:'cb'});
+  A.buyFood({id:'baguette'});
+  if (JSON.stringify(G.inv) === invAv) throw new Error('dégel : achat toujours bloqué');
+  // terminal : ouverture / écran / fermeture (jsdom : rects nuls, chemins réduits)
+  UI.openTerminal('cb');
+  if (!document.querySelector('.term-ov')) throw new Error('terminal non ouvert');
+  A.moveMoney({from:'cash', to:'compte'}); // via termAmt présent
+  UI.closeTerminal(true);
+  // premium : niveau requis puis obtention + intérêts mensuels
+  A.claimPremium();
+  if (G.bank.cardPremium) throw new Error('premium obtenu sans niveau 10');
+  G.xp = 100 * 100;
+  A.claimPremium();
+  if (!G.bank.cardPremium) throw new Error('premium non obtenu au niveau 10');
+  const cp = G.bank.compte;
+  G.insurances = []; // isole l'effet : aucune cotisation pour masquer les intérêts
+  monthly({ rev: 0, chg: 0, tax: 0 });
+  if (!(G.bank.compte > cp)) throw new Error('intérêts premium absents');
+  // sanitize conserve les cartes
+  const sCard = sanitize(JSON.parse(JSON.stringify(G)));
+  if (!sCard.bank.cardCb || sCard.bank.cardCb.plafond < 100 || !sCard.bank.cardPremium) throw new Error('sanitize cartes incomplet');
+  ti.remove();
+  G.bank.cardPremium = false; G.bank.livret = 0; G.bank.compte = 5e6; G.cash = 5e6;
 `);
+await sleep(1500); // laisse l'animation d'éjection se terminer
+run('terminal fermé', `if (document.querySelector('.term-ov')) throw new Error('overlay terminal resté ouvert');`);
 await sleep(80);
 run('quotidien', `
   if (!canClaimDaily()) throw new Error('daily devrait être réclamable (nouvelle partie)');

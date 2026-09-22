@@ -140,7 +140,8 @@ function newGame(name) {
     health: { doctor: null, vaccines: [], sick: false, rdv: 0 },
     jobs: [], training: null, diplomas: [],
     inv: {}, cars: [], houses: [], rental: null, insurances: [],
-    bank: { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: [] },
+    bank: { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: [],
+      cardCb: { plafond: 2000, frozen: false }, cardLivret: { frozen: false }, cardPremium: false },
     biz: [], ill: { unlocked: false, heat: 0, cd: {} },
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
     missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
@@ -149,7 +150,7 @@ function newGame(name) {
     market: { mult: {}, until: 0 }, histBal: [], carState: {}, sportCd: 0,
     stats: {
       earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0,
-      jailed: false, orders: 0, lottoWins: 0, tutoDone: false, braquages: 0, transfersSent: 0
+      jailed: false, orders: 0, lottoWins: 0, tutoDone: false, braquages: 0, transfersSent: 0, frozeOnce: false
     }
   };
 }
@@ -228,6 +229,8 @@ function sanitize(s) {
   // banque
   const sb = (s.bank && typeof s.bank === 'object') ? s.bank : {};
   const bankIdOk = (typeof sb.bankId === 'string') && (DATA.banks.some(b => b.id === sb.bankId) || isPlayerBank(sb.bankId));
+  const scb = (sb.cardCb && typeof sb.cardCb === 'object') ? sb.cardCb : {};
+  const slv = (sb.cardLivret && typeof sb.cardLivret === 'object') ? sb.cardLivret : {};
   out.bank = {
     bankId: bankIdOk ? sb.bankId : null,
     bankName: bankIdOk && typeof sb.bankName === 'string' ? sb.bankName.slice(0, 60) : null,
@@ -235,7 +238,10 @@ function sanitize(s) {
     compte: num(sb.compte, 0, -1e12, 1e12),
     livret: num(sb.livret, 0, 0, 22950),
     loans: Array.isArray(sb.loans) ? sb.loans.filter(L => L && typeof L === 'object' && num(L.reste, 0) > 0).slice(0, 12)
-      .map(L => ({ n: String(L.n || 'Crédit').slice(0, 30), total: num(L.total, 0, 0, 1e13), mens: num(L.mens, 0, 0, 1e10), reste: num(L.reste, 0, 0.01, 1e13) })) : []
+      .map(L => ({ n: String(L.n || 'Crédit').slice(0, 30), total: num(L.total, 0, 0, 1e13), mens: num(L.mens, 0, 0, 1e10), reste: num(L.reste, 0, 0.01, 1e13) })) : [],
+    cardCb: { plafond: num(scb.plafond, 2000, 100, 20000), frozen: !!scb.frozen },
+    cardLivret: { frozen: !!slv.frozen },
+    cardPremium: !!sb.cardPremium
   };
 
   // entreprises
@@ -424,6 +430,64 @@ function bankRate() {
   if (isPlayerBank(G.bank.bankId)) return num(G.bank.playerRate, 2, 0, 5);
   const b = DATA.banks.find(x => x.id === G.bank.bankId);
   return b ? b.lv : 0;
+}
+/* Garantit la présence des objets cartes (toutes sauvegardes / objets reconstruits) */
+function ensureCards() {
+  const b = G.bank;
+  b.cardCb = (b.cardCb && typeof b.cardCb === 'object')
+    ? { plafond: num(b.cardCb.plafond, 2000, 100, 20000), frozen: !!b.cardCb.frozen }
+    : { plafond: 2000, frozen: false };
+  b.cardLivret = (b.cardLivret && typeof b.cardLivret === 'object')
+    ? { frozen: !!b.cardLivret.frozen } : { frozen: false };
+  b.cardPremium = !!b.cardPremium;
+}
+/* ── cartes bancaires ── */
+function cardFrozen(which) {
+  if (which === 'livret') return !!(G.bank.cardLivret && G.bank.cardLivret.frozen);
+  return !!(G.bank.cardCb && G.bank.cardCb.frozen);
+}
+function cardPlafond() { return num(G.bank.cardCb && G.bank.cardCb.plafond, 2000, 100, 20000); }
+/* Paiements par carte : bloqués si carte bleue gelée (le retrait DAB reste possible) */
+function guardCardPay() {
+  if (G.bank.bankId && cardFrozen('cb')) {
+    FX.sound('error');
+    UI.toast('💳 Carte gelée : dégелеz-la au terminal, ou retirez des espèces au DAB.', 'warn');
+    return false;
+  }
+  return true;
+}
+function srcBalance(src) {
+  if (src === 'cash') return G.cash;
+  if (src === 'compte') return G.bank.compte;
+  if (src === 'livret') return G.bank.livret;
+  return 0;
+}
+function moveMoneyWith(from, to, v) {
+  if (!G.bank.bankId) { UI.toast('Ouvrez d’abord un compte.', 'warn'); return false; }
+  if (from === to || !['cash', 'compte', 'livret'].includes(from) || !['cash', 'compte', 'livret'].includes(to)) {
+    UI.toast('Transfert invalide.', 'bad'); return false;
+  }
+  v = Math.round(num(v, 0, 0, 1e12) * 100) / 100;
+  if (!(v > 0)) { FX.sound('error'); UI.toast('Saisissez un montant (ex : 150 ou 150,50).', 'bad'); return false; }
+  // gel de carte : les mouvements depuis un compte bancaire exigent la carte correspondante
+  if (from !== 'cash' && cardFrozen(from === 'livret' ? 'livret' : 'cb')) {
+    FX.sound('error'); UI.toast('💳 Carte ' + (from === 'livret' ? 'Livret' : 'bleue') + ' gelée : opération impossible.', 'warn'); return false;
+  }
+  if (srcBalance(from) < v) {
+    FX.sound('error');
+    UI.toast('Solde source insuffisant : ' + eur(srcBalance(from)) + ' disponibles.', 'bad'); return false;
+  }
+  if (to === 'livret' && G.bank.livret + v > 22950) {
+    FX.sound('error'); UI.toast('Plafond Livret A : place restante ' + eur(Math.max(0, 22950 - G.bank.livret)) + '.', 'warn'); return false;
+  }
+  if ((from === 'compte' && to === 'cash') || (from === 'livret' && to === 'cash') || from === 'livret') {
+    if (v > cardPlafond()) { FX.sound('error'); UI.toast('Plafond carte dépassé : ' + eur(cardPlafond()) + ' / opération. Modifiable au terminal.', 'warn'); return false; }
+  }
+  if (from === 'cash') G.cash -= v; else if (from === 'compte') G.bank.compte -= v; else G.bank.livret -= v;
+  if (to === 'cash') G.cash += v; else if (to === 'compte') G.bank.compte += v; else G.bank.livret += v;
+  const LBL = { cash: 'liquide', compte: 'compte', livret: 'Livret A' };
+  pushJ(LBL[from] + ' → ' + LBL[to], (from === 'cash' ? v : -v), 'bank');
+  return true;
 }
 function curWeather() { return DATA.weather[clamp(W && W.weather ? W.weather.i : 0, 0, DATA.weather.length - 1)]; }
 
@@ -730,6 +794,7 @@ function monthly(info) {
   });
   const rate = bankRate();
   if (G.bank.livret > 0 && rate > 0) { const i = G.bank.livret * rate / 100 / 12; G.bank.livret = Math.min(22950, G.bank.livret + i); pushJ('Intérêts Livret A', i, 'in'); }
+  if (G.bank.cardPremium && G.bank.compte > 0) { const ip = G.bank.compte * 0.005 / 12; G.bank.compte += ip; pushJ('Intérêts compte Premium', ip, 'in'); }
   G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); if (!a) return; pay(a.m, 'Assurance — ' + a.n, 'out'); info.chg += a.m; });
   const emp = G.biz.reduce((a, b) => a + b.emps.length, 0);
   if (emp > 0) { const u = emp * 45; pay(u, 'URSSAF', 'tax'); info.chg += u; info.tax += u; G.stats.tax += u; }
@@ -820,6 +885,7 @@ const A = {
 
   buyFood(d) {
     const f = foodById(d.id); if (!f) return;
+    if (!guardCardPay()) return;
     const q = clamp(Math.floor(num(d.q, 1, 1, 99)), 1, 99);
     const unit = effPrice(f);
     const cost = +(unit * q).toFixed(2);
@@ -931,6 +997,7 @@ const A = {
 
   buyMat(d) {
     const b = A.bizAt(d); if (!b || b.type !== 'boulangerie') return;
+    if (!guardCardPay()) return;
     const m = DATA.bizTypes.boulangerie.mats[d.m]; if (!m) return;
     const q = clamp(Math.floor(num(d.q, 10, 1, 10000)), 1, 10000);
     const cost = +(m.p * q * skillBonus('upgrade')).toFixed(2);
@@ -959,6 +1026,7 @@ const A = {
   },
   buyStock(d) {
     const b = A.bizAt(d); if (!b || b.type !== 'magasin') return;
+    if (!guardCardPay()) return;
     const p = DATA.bizTypes.magasin.prods.find(x => x.id === d.p); if (!p) return;
     const q = clamp(Math.floor(num(d.q, 10, 1, 10000)), 1, 10000);
     const cost = +(p.cost * q).toFixed(2);
@@ -970,6 +1038,7 @@ const A = {
   },
   upgrade(d) {
     const b = A.bizAt(d); if (!b) return;
+    if (!guardCardPay()) return;
     const u = (DATA.ups[b.type] || []).find(x => x.id === d.u); if (!u) return;
     const lvl = upLvl(b, u.id);
     if (lvl >= u.max) return UI.toast('Niveau maximum atteint.', 'warn');
@@ -982,6 +1051,7 @@ const A = {
   },
   mktDo(d) {
     const b = A.bizAt(d); if (!b) return;
+    if (!guardCardPay()) return;
     const a = (DATA.mkt[b.type] || []).find(x => x.id === d.a); if (!a) return;
     if (a.once && perk(b, a.perk)) return UI.toast('Déjà actif.', 'warn');
     if (balance() < a.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
@@ -1034,6 +1104,7 @@ const A = {
   },
   buyMandat(d) {
     const b = A.bizAt(d); if (!b || b.type !== 'immobilier') return;
+    if (!guardCardPay()) return;
     if (balance() < 300) { FX.sound('error'); return UI.toast('300 € requis par mandat.', 'bad'); }
     pay(300, 'Mandat de vente', 'biz'); b.mandats = num(b.mandats, 0) + 1;
     FX.sound('buy');
@@ -1170,6 +1241,7 @@ const A = {
     G.bank.bankId = d.id;
     G.bank.bankName = (d.name || (known ? known.n : 'Banque')).slice(0, 60);
     G.bank.playerRate = isPlayerBank(d.id) ? clamp(num(parseFloat(d.rate), 2, 0, 5), 0, 5) : null;
+    ensureCards();
     if (G.cash > 0) { G.bank.compte += G.cash; pushJ('Versement initial', G.cash, 'bank'); G.cash = 0; }
     UI.closeModal();
     UI.cardFx(switching ? 'Transfert de compte' : 'Ouverture de compte', eur(G.bank.compte));
@@ -1181,7 +1253,7 @@ const A = {
     if (!G.bank.bankId) return UI.toast('Aucun compte à clôturer.', 'warn');
     const total = G.bank.compte + G.bank.livret;
     G.cash += total; pushJ('Clôture de compte', total, 'bank');
-    G.bank = { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: G.bank.loans };
+    G.bank = { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: G.bank.loans, cardCb: { plafond: num(G.bank.cardCb && G.bank.cardCb.plafond, 2000, 100, 20000), frozen: false }, cardLivret: { frozen: false }, cardPremium: false };
     UI.cardFx('Compte clôturé', '+' + eur(total));
     FX.sound('back');
     UI.toast('Compte clôturé, ' + eur(total) + ' récupérés en liquide.', 'warn');
@@ -1189,40 +1261,81 @@ const A = {
   },
   bankDetails(d) { UI.bankDetails(d); },
   _amt() { return Math.round(parseAmount(((document.getElementById('bankAmt') || {}).value)) * 100) / 100; },
-  deposit() {
+  _termAmt() { return Math.round(parseAmount(((document.getElementById('termAmt') || document.getElementById('bankAmt') || {}).value)) * 100) / 100; },
+  moveMoney(d) {
+    const ok = moveMoneyWith(d.from, d.to, A._termAmt());
+    if (ok) {
+      const LBL = { cash: 'liquide', compte: 'compte', livret: 'Livret A' };
+      UI.cardFx(LBL[d.from] + ' → ' + LBL[d.to], eur(A._termAmt()));
+      FX.sound('cash');
+      UI.toast('✓ Virement effectué : ' + LBL[d.from] + ' → ' + LBL[d.to], 'good');
+      UI.termReceipt && UI.termReceipt(LBL[d.from] + ' → ' + LBL[d.to], A._termAmt());
+      refresh();
+    } else UI.termRefresh && UI.termRefresh();
+  },
+  sendToPlayer(d) {
+    const to = String(d.to || ((document.getElementById('termTo') || {}).value || '')).trim();
+    const v = Math.floor(num(d.v, parseAmount(((document.getElementById('termAmt') || {}).value)), 0, 1e12));
+    if (!G.bank.bankId) { FX.sound('error'); return UI.toast('Ouvrez d’abord un compte.', 'warn'); }
+    if (!to) { FX.sound('error'); return UI.toast('Entrez le pseudo du destinataire.', 'warn'); }
+    if (!(v > 0)) { FX.sound('error'); return UI.toast('Montant invalide.', 'warn'); }
+    if (cardFrozen('cb')) { FX.sound('error'); return UI.toast('💳 Carte bleue gelée : envoi impossible.', 'warn'); }
+    if (v > cardPlafond()) { FX.sound('error'); return UI.toast('Plafond carte dépassé (' + eur(cardPlafond()) + ' / opération).', 'warn'); }
+    if (v > balance()) { FX.sound('error'); return UI.toast('Solde insuffisant : ' + eur(balance()) + '.', 'bad'); }
+    DB.authFetch('/api/transfer', { method: 'POST', body: JSON.stringify({ to, amount: v }) }).then(j => {
+      if (j && j.ok) {
+        G.stats.transfersSent = num(G.stats.transfersSent, 0) + 1;
+        UI.moneyFly(); FX.sound('cash');
+        UI.toast('💸 Envoi de ' + eur(v) + ' à ' + esc(to) + '…', 'good');
+        UI.termReceipt && UI.termReceipt('Envoi → ' + to, v);
+        UI.closeModal(); maybeAch();
+      } else { FX.sound('error'); UI.toast((j && j.err) || 'Échec du transfert.', 'bad'); }
+    }).catch(() => { FX.sound('error'); UI.toast('Transferts entre joueurs : mode serveur uniquement.', 'warn'); });
+  },
+  toggleFreeze(d) {
+    const which = d.card === 'livret' ? 'livret' : 'cb';
+    const c = which === 'livret' ? (G.bank.cardLivret = G.bank.cardLivret || { frozen: false }) : (G.bank.cardCb = G.bank.cardCb || { plafond: 2000, frozen: false });
+    c.frozen = !c.frozen;
+    if (c.frozen) G.stats.frozeOnce = true;
+    FX.sound(c.frozen ? 'back' : 'win');
+    UI.toast(c.frozen ? '❄ Carte ' + (which === 'livret' ? 'Livret' : 'bleue') + ' gelée : paiements par carte bloqués.' : '🔥 Carte ' + (which === 'livret' ? 'Livret' : 'bleue') + ' dégelée.', c.frozen ? 'warn' : 'good');
+    save(); refresh();
+  },
+  setPlafond(d) {
+    const v = Math.floor(num(d.v, 0, 100, 20000));
+    if (!(v >= 100)) { FX.sound('error'); return UI.toast('Plafond : entre 100 € et 20 000 €.', 'bad'); }
+    G.bank.cardCb = G.bank.cardCb || { plafond: 2000, frozen: false };
+    G.bank.cardCb.plafond = v;
+    FX.sound('click');
+    UI.toast('🛡 Plafond carte fixé à ' + eur(v) + ' / opération.', 'good');
+    save(); refresh();
+  },
+  claimPremium() {
+    if (G.bank.cardPremium) return UI.toast('Carte premium déjà obtenue.', 'warn');
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
+    if (level(G.xp) < 10) { FX.sound('error'); return UI.toast('Carte premium réservée au niveau 10+ (vous : ' + level(G.xp) + ').', 'warn'); }
+    G.bank.cardPremium = true;
+    UI.confetti(); FX.sound('win');
+    UI.toast('💎 Carte HEXAPAY Premium obtenue : compte rémunéré 0,5 %/an !', 'good');
+    maybeAch(); save(); refresh();
+  },
+  openTerminal(d) { UI.openTerminal(d.which === 'livret' ? 'livret' : d.which === 'premium' ? 'premium' : 'cb'); },
+  termEject() { UI.closeTerminal(true); },
+  deposit() {
     const v = A._amt();
-    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 150 ou 150,50).', 'bad'); }
-    if (G.cash < v) { FX.sound('error'); return UI.toast('Liquidités insuffisantes : ' + eur(G.cash) + ' en poche.', 'bad'); }
-    G.cash -= v; G.bank.compte += v; pushJ('Dépôt espèces', v, 'bank');
-    UI.cardFx('Dépôt sur compte', '+' + eur(v)); FX.sound('cash'); refresh();
+    if (moveMoneyWith('cash', 'compte', v)) { UI.cardFx('Dépôt sur compte', '+' + eur(v)); FX.sound('cash'); refresh(); }
   },
   withdraw() {
-    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
     const v = A._amt();
-    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 150 ou 150,50).', 'bad'); }
-    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant : ' + eur(G.bank.compte) + ' disponibles.', 'bad'); }
-    G.bank.compte -= v; G.cash += v; pushJ('Retrait espèces', -v, 'bank');
-    UI.cardFx('Retrait espèces', '−' + eur(v)); FX.sound('cash'); refresh();
+    if (moveMoneyWith('compte', 'cash', v)) { UI.cardFx('Retrait espèces', '−' + eur(v)); FX.sound('cash'); refresh(); }
   },
   toLivret() {
-    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
     const v = A._amt();
-    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 500).', 'bad'); }
-    if (G.bank.compte < v) { FX.sound('error'); return UI.toast('Solde du compte insuffisant : ' + eur(G.bank.compte) + ' disponibles.', 'bad'); }
-    if (G.bank.livret + v > 22950) { FX.sound('error'); return UI.toast('Plafond Livret A dépassé : place restante ' + eur(Math.max(0, 22950 - G.bank.livret)) + '.', 'warn'); }
-    G.bank.compte -= v; G.bank.livret += v; pushJ('Compte → Livret A', -v, 'bank');
-    UI.cardFx('Vers Livret A', '−' + eur(v)); FX.sound('cash');
-    UI.toast('🏦 ' + eur(v) + ' placés sur le Livret A (' + bankRate() + ' %/an)', 'good');
-    refresh();
+    if (moveMoneyWith('compte', 'livret', v)) { UI.cardFx('Vers Livret A', '−' + eur(v)); FX.sound('cash'); UI.toast('🏦 ' + eur(v) + ' placés sur le Livret A (' + bankRate() + ' %/an)', 'good'); refresh(); }
   },
   fromLivret() {
-    if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
     const v = A._amt();
-    if (!(v > 0)) { FX.sound('error'); return UI.toast('Saisissez un montant (ex : 500).', 'bad'); }
-    if (G.bank.livret < v) { FX.sound('error'); return UI.toast('Livret A insuffisant : ' + eur(G.bank.livret) + ' disponibles.', 'bad'); }
-    G.bank.livret -= v; G.bank.compte += v; pushJ('Livret A → compte', v, 'bank');
-    UI.cardFx('Livret A → compte', '+' + eur(v)); FX.sound('cash'); refresh();
+    if (moveMoneyWith('livret', 'compte', v)) { UI.cardFx('Livret A → compte', '+' + eur(v)); FX.sound('cash'); refresh(); }
   },
   loanTake(d) {
     if (!G.bank.bankId) return UI.toast('Ouvrez d’abord un compte.', 'warn');
@@ -1456,7 +1569,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal'];
 
 /* ── sauvegarde ── */
 let saveInFlight = false;

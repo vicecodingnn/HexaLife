@@ -379,8 +379,8 @@ const UI = (() => {
   /* ── Carte bancaire 3D (inclinaison au curseur) ── */
   let tiltRaf = 0;
   document.addEventListener('mousemove', e => {
-    const card = e.target.closest && e.target.closest('.bankcard[data-tilt]');
-    document.querySelectorAll('.bankcard[data-tilt]').forEach(c => {
+    const card = e.target.closest && e.target.closest('.bankcard[data-tilt], .pcard[data-tilt]');
+    document.querySelectorAll('.bankcard[data-tilt], .pcard[data-tilt]').forEach(c => {
       if (c !== card) c.style.transform = '';
     });
     if (!card || reducedMotion()) return;
@@ -515,18 +515,7 @@ const UI = (() => {
   function doSendMoney() {
     const to = ((el('smTo') || {}).value || '').trim();
     const amount = Math.floor(parseAmount(((el('smAmt') || {}).value)));
-    if (!to) return toast('Entrez un pseudo.', 'warn');
-    if (!(amount > 0)) return toast('Montant invalide (ex : 100 ou 100,50).', 'warn');
-    if (amount > balance()) return toast('Solde insuffisant.', 'bad');
-    DB.authFetch('/api/transfer', { method: 'POST', body: JSON.stringify({ to, amount }) }).then(j => {
-      if (j && j.ok) {
-        G.stats.transfersSent = (G.stats.transfersSent || 0) + 1;
-        moneyFly(); FX.sound('cash');
-        toast('💸 Envoi de ' + eur(amount) + ' à ' + esc(to) + ' en cours…', 'good');
-        closeModal(); maybeAch();
-      }
-      else { FX.sound('error'); toast((j && j.err) || 'Échec du transfert.', 'bad'); }
-    }).catch(() => { FX.sound('error'); toast('Transfert indisponible hors-ligne.', 'bad'); });
+    A.sendToPlayer({ to, v: amount });
   }
 
   function openAnnounce() {
@@ -663,8 +652,8 @@ const UI = (() => {
     const lottoCd = Math.max(0, Math.ceil((num(G.lottoCd, 0) - Date.now()) / 1000));
     const hour = new Date().getHours();
     const salut = hour < 6 ? 'Bonne nuit' : hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
-    const card = G.bank.bankId ? bankCardHTML(bal, G.bank.bankName || 'Banque', G.name, true) :
-      '<div class="panel" style="text-align:center;padding:26px"><div style="font-size:34px">💳</div><p class="empty" style="margin:10px 0 14px">Ouvrez un compte pour obtenir votre carte HEXAPAY.</p><button class="btn btn-primary btn-sm" data-act="tab" data-id="banque">Choisir ma banque</button></div>';
+    const card = G.bank.bankId ? walletHTML() :
+      '<div class="panel" style="text-align:center;padding:26px"><div style="font-size:34px">💳</div><p class="empty" style="margin:10px 0 14px">Ouvrez un compte pour obtenir vos cartes HEXAPAY (bleue) et Livret A (rouge).</p><button class="btn btn-primary btn-sm" data-act="tab" data-id="banque">Choisir ma banque</button></div>';
     return '<div class="vie-head"><div><h1>' + salut + ', ' + esc(G.name) + '.</h1>' +
       '<div class="sub" style="margin-bottom:0">Niveau ' + l + ' · ' + Math.round(cur / need * 100) + ' % d’XP' +
       (G.health.sick ? ' · <b style="color:var(--red)">🤢 malade</b>' : '') +
@@ -672,10 +661,14 @@ const UI = (() => {
       (G.adminMod ? ' · <b style="color:var(--gold)">' + (G.adminMod.type === 'boost' ? '⚡ boost admin' : '🐌 malus admin') + '</b>' : '') + '</div></div>' +
       '<div data-weather-chip class="w-chip">' + curWeather().ico + ' ' + esc(curWeather().n) + '</div></div>' +
       weatherCard() +
-      '<div class="grid2" style="margin-top:18px"><div>' + card + '</div>' +
+      card +
+      '<div class="grid2" style="margin-top:18px">' +
       '<div class="kpi"><div class="k-lbl">Patrimoine net</div><div class="k-val gold">' + kfmt(netWorth()) + '</div>' +
-      '<div class="k-lbl" style="margin-top:10px">Impôts & cotisations versés</div><div class="k-val" style="color:var(--red);font-size:16px">' + eur(G.stats.tax) + '</div>' +
-      '<div class="k-lbl" style="margin-top:10px">Niveau ' + l + ' — ' + Math.round(cur / need * 100) + ' %</div><div class="bar b-gold" style="margin:6px 0 0"><div class="fill" style="width:' + (cur / need * 100) + '%"></div></div></div></div>' +
+      '<div class="k-lbl" style="margin-top:10px">Impôts & cotisations versés</div><div class="k-val" style="color:var(--red);font-size:16px">' + eur(G.stats.tax) + '</div></div>' +
+      '<div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val">' + eur(G.bank.compte) + '</div>' +
+      '<div class="k-lbl" style="margin-top:10px">Livret A · ' + bankRate() + ' %</div><div class="k-val" style="color:var(--red)">' + eur(G.bank.livret) + '</div>' +
+      '<div class="bar b-gold" style="margin:10px 0 0"><div class="fill" style="width:' + (cur / need * 100) + '%"></div></div>' +
+      '<div class="det" style="margin-top:6px">Niveau ' + l + ' — ' + Math.round(cur / need * 100) + ' %</div></div></div>' +
       dailyCard() +
       '<div class="grid2"><div class="panel"><h2>Défis du moment</h2>' + taskRows(G.missions.list, 'claimMission') +
       '<div class="det" style="margin-top:8px">Renouvelés dans <span class="cd" data-until="' + G.missions.refreshAt + '">…</span></div></div>' +
@@ -917,14 +910,15 @@ const UI = (() => {
     const emp = G.biz.reduce((a, b) => a + b.emps.length, 0);
     if (emp) prelev.push(['URSSAF (' + emp + ' salarié·e·s)', emp * 45]);
     const jrn = journalRows(30);
-    return '<h1>Banque — ' + esc(bankName) + '</h1><div class="sub">Votre carte, vos mouvements, vos crédits et vos transferts.</div>' +
-      '<div class="grid2"><div>' + bankCardHTML(G.bank.compte, bankName, G.name, false) +
+    return '<h1>Banque — ' + esc(bankName) + '</h1><div class="sub">Votre portefeuille de cartes, votre terminal et vos crédits.</div>' +
+      walletHTML() +
+      '<div class="grid2" style="margin-top:18px"><div>' +
+      '<div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val">' + eur(G.bank.compte) + '</div><div class="det" style="margin-top:4px">Liquide en poche : ' + eur(G.cash) + '</div></div>' +
+      '<div class="kpi" style="margin-top:12px"><div class="k-lbl">Livret A · ' + bankRate() + ' %/an</div><div class="k-val gold">' + eur(G.bank.livret) + '</div><div class="det" style="margin-top:4px">Plafond 22 950 € · place restante ' + eur(Math.max(0, 22950 - G.bank.livret)) + '</div></div>' +
       '<div class="btn-row" style="margin-top:14px"><button class="btn btn-primary" data-act="openSendMoney">💸 Envoyer de l’argent</button>' +
       '<button class="btn btn-danger btn-sm" data-act="leaveBank">Clôturer le compte</button></div></div>' +
-      '<div><div class="grid2" style="gap:12px"><div class="kpi"><div class="k-lbl">Livret A · ' + bankRate() + ' %/an</div><div class="k-val gold">' + eur(G.bank.livret) + '</div><div class="det" style="margin-top:4px">Plafond 22 950 €</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Liquide (poche)</div><div class="k-val">' + eur(G.cash) + '</div></div></div>' +
-      '<div class="kpi" style="margin-top:12px"><div class="k-lbl">Prélèvements mensuels (60 s)</div>' +
-      (prelev.length ? prelev.map(([l, m]) => '<div class="rowline thin"><div class="lbl sm">' + esc(l) + '</div><span class="money neg">−' + eur(m) + '</span></div>').join('') : '<div class="empty">Aucun prélèvement.</div>') + '</div></div></div>' +
+      '<div class="kpi"><div class="k-lbl">Prélèvements mensuels (60 s)</div>' +
+      (prelev.length ? prelev.map(([l, m]) => '<div class="rowline thin"><div class="lbl sm">' + esc(l) + '</div><span class="money neg">−' + eur(m) + '</span></div>').join('') : '<div class="empty">Aucun prélèvement.</div>') + '</div></div>' +
       '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Mouvements internes</h2>' +
       '<label class="m-field">Montant (€) — virgule acceptée<div class="btn-row" style="margin-top:6px"><input type="text" inputmode="decimal" class="mini amt-input" id="bankAmt" placeholder="0,00" autocomplete="off">' +
       '<button class="btn btn-sm" data-act="setBankAmt" data-v="100">+100</button><button class="btn btn-sm" data-act="setBankAmt" data-v="500">+500</button><button class="btn btn-sm" data-act="setBankAmt" data-v="1000">+1000</button></div></label>' +
@@ -961,6 +955,273 @@ const UI = (() => {
       '<td class="money ' + (j.amt < 0 ? 'neg' : '') + '" style="text-align:right">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</td></tr>').join('') ||
       '<tr><td colspan="3" class="empty">Aucune opération' + (T.journalF !== 'all' ? ' pour ce filtre' : '') + '.</td></tr>';
   }
+
+  /* ═══════════ PORTEFEUILLE DE CARTES & TERMINAL BANCAIRE 3D ═══════════ */
+  let term = null; // { which, el, clone, inserted, lastReceipt }
+
+  function pcard(which, skin, subtitle, bal, frozen, brand) {
+    return '<div class="pcard ' + skin + (frozen ? ' frozen' : '') + '" data-card="' + which + '" data-act="openTerminal" data-which="' + which + '" data-tilt role="button" tabindex="0" title="Cliquer pour insérer la carte dans le terminal">' +
+      (frozen ? '<div class="pcard-ice">❄ GELÉE</div>' : '') +
+      '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + esc(brand) + '</span></div>' +
+      '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
+      '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div>' +
+      '<div style="text-align:right"><div class="bc-lbl">' + esc(subtitle) + '</div><div class="bc-bal">' + eur(bal) + '</div></div></div></div>';
+  }
+  function lockedCard() {
+    const ok = level(G.xp) >= 10;
+    return '<div class="pcard skin-locked' + (ok ? ' claimable' : '') + '"' + (ok ? ' data-act="claimPremium" role="button" tabindex="0" title="Réclamer votre carte premium"' : '') + '>' +
+      '<div class="lock-ico">' + (ok ? '💎' : '🔒') + '</div><div class="lock-t">HEXAPAY PREMIUM</div>' +
+      '<div class="lock-d">' + (ok ? 'Niveau atteint — cliquez pour réclamer' : 'Compte rémunéré 0,5 %/an · débloquée au niveau 10 (vous : ' + level(G.xp) + ')') + '</div></div>';
+  }
+  function walletHTML() {
+    if (!G.bank.bankId) return '';
+    return '<div class="wallet">' +
+      pcard('cb', G.bank.cardPremium ? 'skin-black' : 'skin-blue', G.bank.bankName || 'Banque', G.bank.compte, cardFrozen('cb'), G.bank.cardPremium ? 'HEXAPAY PREMIUM' : 'HEXAPAY') +
+      pcard('livret', 'skin-red', 'Livret A · ' + bankRate() + ' %/an', G.bank.livret, cardFrozen('livret'), 'LIVRET A') +
+      (!G.bank.cardPremium ? lockedCard() : '') +
+      '</div>' +
+      '<div class="wallet-hint"> Cliquez sur une carte : elle s’insère dans le terminal 3D pour réaliser vos opérations.</div>';
+  }
+
+  function termScreenHTML() {
+    const which = term.which;
+    const frozen = cardFrozen(which === 'livret' ? 'livret' : 'cb');
+    const brand = which === 'livret' ? 'LIVRET A' : (G.bank.cardPremium ? 'HEXAPAY PREMIUM' : 'HEXAPAY');
+    const bal = which === 'livret' ? G.bank.livret : G.bank.compte;
+    if (frozen) {
+      return '<div class="ts-head warn">❄ CARTE GELÉE</div>' +
+        '<div class="ts-body">Les opérations sont suspendues pour cette carte.</div>' +
+        '<div class="ts-grid"><button class="ts-btn ok" data-term="freeze">🔥 Dégeler la carte</button>' +
+        '<button class="ts-btn" data-term="eject">⏏ Éjecter</button></div>' +
+        '<div class="ts-status" id="termStatus">Authentification refusée.</div>';
+    }
+    const rows = [];
+    if (which !== 'livret') {
+      rows.push('<button class="ts-btn" data-term="act" data-from="cash" data-to="compte">🪙 Dépôt espèces</button>');
+      rows.push('<button class="ts-btn" data-term="act" data-from="compte" data-to="cash">💵 Retrait DAB</button>');
+    }
+    rows.push('<button class="ts-btn" data-term="act" data-from="compte" data-to="livret">📈 Compte → Livret A</button>');
+    rows.push('<button class="ts-btn" data-term="act" data-from="livret" data-to="compte">📉 Livret A → compte</button>');
+    if (which !== 'livret') rows.push('<button class="ts-btn" data-term="sendform">💸 Envoyer à un joueur</button>');
+    rows.push('<button class="ts-btn" data-term="statement">📜 Relevé d’opérations</button>');
+    rows.push('<button class="ts-btn" data-term="dues">📅 Échéances mensuelles</button>');
+    return '<div class="ts-head">' + (which === 'livret' ? '🔴' : G.bank.cardPremium ? '⚫' : '🔵') + ' ' + esc(brand) + ' <span class="ts-bal">' + eur(bal) + '</span></div>' +
+      '<div class="ts-sub">' + esc(G.bank.bankName || 'Banque') + ' · titulaire ' + esc(G.name) + ' · plafond ' + eur(cardPlafond()) + '/op</div>' +
+      '<label class="ts-amt">Montant (€)<input id="termAmt" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>' +
+      '<div class="ts-grid">' + rows.join('') + '</div>' +
+      '<div class="ts-status" id="termStatus">Prêt. Sélectionnez une opération.</div>';
+  }
+  function termRefresh() {
+    if (!term) return;
+    const scr = term.el.querySelector('.term-screen');
+    if (scr && term.inserted) {
+      const amt = (document.getElementById('termAmt') || {}).value || '';
+      scr.innerHTML = termScreenHTML();
+      const ni = document.getElementById('termAmt');
+      if (ni && amt) ni.value = amt;
+    }
+  }
+  function termReceipt(label, amt) {
+    if (!term || !term.el) return;
+    term.lastReceipt = { label, amt, t: Date.now(), code: Math.floor(100000 + Math.random() * 899999) };
+    const slot = term.el.querySelector('.term-receipt');
+    if (!slot) return;
+    const r = document.createElement('div');
+    r.className = 'receipt';
+    r.innerHTML = '<div class="rc-brand">HEXAPAY T-800</div><div class="rc-line">' + esc(label) + '</div>' +
+      '<div class="rc-amt">' + eur(amt) + '</div>' +
+      '<div class="rc-line dim2">' + new Date().toLocaleString('fr-FR') + ' · AUTH ' + term.lastReceipt.code + '</div>' +
+      '<div class="rc-line dim2">MERCI DE VOTRE CONFIANCE</div>';
+    slot.innerHTML = '';
+    slot.appendChild(r);
+    setTimeout(() => { r.classList.add('fade'); setTimeout(() => r.remove(), 700); }, 4200);
+    const st = term.el.querySelector('#termStatus');
+    if (st) { st.textContent = '✓ Opération autorisée — ' + label + ' · ' + eur(amt); st.className = 'ts-status ok'; }
+  }
+  function termRender(view) {
+    if (!term) return;
+    const scr = term.el.querySelector('.term-screen');
+    if (!scr) return;
+    if (view === 'statement') {
+      const rows = (G.journal || []).slice(0, 10).map(j => '<div class="ts-row"><span class="dim2">' + new Date(j.t).toLocaleTimeString('fr-FR') + '</span><span style="flex:1">' + esc(j.label) + '</span><span class="' + (j.amt < 0 ? 'negx' : 'pos') + '">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</span></div>').join('') || '<div class="ts-body">Aucune opération.</div>';
+      scr.innerHTML = '<div class="ts-head">📜 RELEVÉ</div><div class="ts-scroll">' + rows + '</div>' +
+        '<div class="ts-grid"><button class="ts-btn" data-term="menu">← Menu</button><button class="ts-btn" data-term="eject">⏏ Éjecter</button></div>';
+    } else if (view === 'dues') {
+      const prelev = [];
+      if (G.rental) prelev.push(['Loyer', G.rental.loyer]);
+      G.houses.forEach(h => prelev.push(['Charges ' + ((DATA.homes[h.i] || {}).n || ''), h.c]));
+      G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); if (a) prelev.push(['Assurance ' + a.n, a.m]); });
+      G.bank.loans.forEach(L => prelev.push(['Crédit ' + L.n, L.mens]));
+      const emp = G.biz.reduce((a, b) => a + b.emps.length, 0);
+      if (emp) prelev.push(['URSSAF', emp * 45]);
+      scr.innerHTML = '<div class="ts-head">📅 ÉCHÉANCES (60 s)</div><div class="ts-scroll">' +
+        (prelev.length ? prelev.map(([l, m]) => '<div class="ts-row"><span style="flex:1">' + esc(l) + '</span><span class="negx">−' + eur(m) + '</span></div>').join('') : '<div class="ts-body">Aucune échéance.</div>') +
+        '</div><div class="ts-grid"><button class="ts-btn" data-term="menu">← Menu</button><button class="ts-btn" data-term="eject">⏏ Éjecter</button></div>';
+    } else if (view === 'sendform') {
+      scr.innerHTML = '<div class="ts-head">💸 ENVOI JOUEUR</div>' +
+        '<label class="ts-amt">Pseudo<input id="termTo" autocomplete="off" placeholder="Pseudo du destinataire"></label>' +
+        '<label class="ts-amt">Montant (€)<input id="termAmt" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>' +
+        '<div class="ts-grid"><button class="ts-btn ok" data-term="send">Envoyer</button><button class="ts-btn" data-term="menu">← Menu</button></div>' +
+        '<div class="ts-status" id="termStatus">Plafond : ' + eur(cardPlafond()) + ' / opération.</div>';
+    } else if (view === 'plafond') {
+      scr.innerHTML = '<div class="ts-head">🛡 PLAFOND CARTE</div><div class="ts-body">Actuel : ' + eur(cardPlafond()) + ' / opération</div>' +
+        '<div class="ts-grid">' + [500, 1000, 2000, 5000, 10000].map(v => '<button class="ts-btn" data-term="plafondSet" data-v="' + v + '">' + eur0(v) + '</button>').join('') + '</div>' +
+        '<div class="ts-grid"><button class="ts-btn" data-term="menu">← Menu</button></div>';
+    } else {
+      scr.innerHTML = termScreenHTML();
+    }
+  }
+
+  function openTerminal(which) {
+    if (!G || !G.bank.bankId) return toast('Ouvrez d’abord un compte bancaire.', 'warn');
+    if (term) return;
+    which = which === 'livret' ? 'livret' : 'cb';
+    FX.sound('click');
+    const ov = document.createElement('div');
+    ov.className = 'term-ov';
+    ov.innerHTML =
+      '<div class="term-back"></div>' +
+      '<div class="term-scene">' +
+        '<div class="term-device">' +
+          '<div class="term-top"><span class="term-brand">HEXAPAY&nbsp;T-800</span><span class="term-led"></span></div>' +
+          '<div class="term-slot"><div class="term-slot-lip"></div></div>' +
+          '<div class="term-screen off"></div>' +
+          '<div class="term-keypad">' +
+            '<button class="tkey" data-term="menu" title="Menu">☰</button>' +
+            '<button class="tkey" data-term="receiptLast" title="Dernier ticket">🧾</button>' +
+            '<button class="tkey" data-term="plafond" title="Plafond">🛡</button>' +
+            '<button class="tkey cold" data-term="freeze" title="Geler / dégeler la carte">❄</button>' +
+            '<button class="tkey" data-term="statement" title="Relevé">📜</button>' +
+            '<button class="tkey danger" data-term="eject" title="Éjecter la carte">⏏</button>' +
+          '</div>' +
+          '<div class="term-receipt"></div>' +
+        '</div>' +
+        '<div class="term-side"><div class="term-hint" id="termHint">🖱 Saisissez votre carte et approchez-la du lecteur…</div>' +
+        '<div class="term-side-cards" id="termSideCards"></div></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    term = { which, el: ov, inserted: false, clone: null, lastReceipt: null };
+
+    // clone 3D de la carte source (FLIP)
+    const srcEl = document.querySelector('[data-card="' + which + '"]');
+    const clone = document.createElement('div');
+    clone.className = 'term-clone-wrap';
+    const skin = which === 'livret' ? 'skin-red' : (G.bank.cardPremium ? 'skin-black' : 'skin-blue');
+    clone.innerHTML = '<div class="pcard ' + skin + ' clone">' + (cardFrozen(which) ? '<div class="pcard-ice">❄ GELÉE</div>' : '') +
+      '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + (which === 'livret' ? 'LIVRET A' : 'HEXAPAY') + '</span></div>' +
+      '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
+      '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div></div></div>';
+    ov.appendChild(clone);
+    term.clone = clone;
+    const slot = ov.querySelector('.term-slot');
+
+    const fly = () => {
+      if (!ov.isConnected || !term || term.el !== ov) return;
+      const sr = slot.getBoundingClientRect();
+      clone.classList.add('fly');
+      clone.style.left = (sr.left + sr.width / 2 - 130) + 'px';
+      clone.style.top = (sr.top - 74) + 'px';
+      clone.style.transform = 'scale(.86) rotateY(14deg) rotateX(24deg)';
+    };
+    const insert = () => {
+      if (!ov.isConnected || !term || term.el !== ov) return;
+      clone.style.opacity = ''; // rend la main aux classes CSS (.insert → opacity 0)
+      clone.classList.add('insert');
+      slot.classList.add('glow');
+      FX.sound('craft');
+      setTimeout(() => {
+        if (!ov.isConnected || !term || term.el !== ov) return;
+        term.inserted = true;
+        const scr = ov.querySelector('.term-screen');
+        scr.classList.remove('off');
+        scr.classList.add('on');
+        termRender('menu');
+        const hint = el('termHint');
+        if (hint) hint.innerHTML = '✅ Carte authentifiée. Choisissez une opération — le ticket s’imprime à chaque validation.';
+        // mini-portefeuille latéral (autres cartes accessibles)
+        const side = el('termSideCards');
+        if (side) side.innerHTML = walletHTML();
+      }, reducedMotion() ? 0 : 480);
+    };
+    if (srcEl && !reducedMotion()) {
+      const r = srcEl.getBoundingClientRect();
+      clone.style.left = r.left + 'px';
+      clone.style.top = r.top + 'px';
+      clone.style.opacity = '1';
+      srcEl.style.visibility = 'hidden';
+      requestAnimationFrame(() => requestAnimationFrame(fly));
+      setTimeout(insert, reducedMotion() ? 0 : 620);
+    } else {
+      if (srcEl) srcEl.style.visibility = 'hidden';
+      clone.style.opacity = '0';
+      insert();
+    }
+  }
+
+  function closeTerminal(eject) {
+    if (!term) return;
+    const t = term; term = null;
+    const srcEl = document.querySelector('[data-card="' + t.which + '"]');
+    const finish = () => {
+      if (srcEl) srcEl.style.visibility = '';
+      t.el.classList.add('out');
+      setTimeout(() => t.el.remove(), 380);
+      FX.sound('back');
+      refresh(true);
+    };
+    if (eject && t.clone && !reducedMotion()) {
+      t.clone.classList.remove('insert');
+      t.clone.classList.add('ejecting');
+      const slot = t.el.querySelector('.term-slot');
+      slot && slot.classList.remove('glow');
+      FX.sound('craft');
+      setTimeout(() => {
+        if (srcEl) {
+          const r = srcEl.getBoundingClientRect();
+          t.clone.classList.remove('fly');
+          t.clone.classList.add('fly');
+          t.clone.style.left = r.left + 'px';
+          t.clone.style.top = r.top + 'px';
+          t.clone.style.transform = 'none';
+        }
+        setTimeout(finish, 520);
+      }, 260);
+    } else finish();
+  }
+
+  /* délégation des touches du terminal */
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-term]');
+    if (!b || !term) return;
+    e.preventDefault(); e.stopPropagation();
+    const a = b.dataset.term;
+    FX.sound('click');
+    if (a === 'eject') return closeTerminal(true);
+    if (a === 'menu') return termRender('menu');
+    if (a === 'statement') return termRender('statement');
+    if (a === 'dues') return termRender('dues');
+    if (a === 'sendform') return termRender('sendform');
+    if (a === 'plafond') return termRender('plafond');
+    if (a === 'plafondSet') { A.setPlafond({ v: b.dataset.v }); return termRender('plafond'); }
+    if (a === 'freeze') { A.toggleFreeze({ card: term.which === 'livret' ? 'livret' : 'cb' }); return termRefresh(), termRender('menu'); }
+    if (a === 'receiptLast') {
+      if (term.lastReceipt) termReceipt(term.lastReceipt.label, term.lastReceipt.amt);
+      else { const st = term.el.querySelector('#termStatus'); if (st) st.textContent = 'Aucun ticket précédent.'; }
+      return;
+    }
+    if (a === 'act') {
+      const st = term.el.querySelector('#termStatus');
+      if (st) { st.textContent = '⏳ Traitement en cours…'; st.className = 'ts-status'; }
+      setTimeout(() => A.moveMoney({ from: b.dataset.from, to: b.dataset.to }), reducedMotion() ? 0 : 420);
+      return;
+    }
+    if (a === 'send') {
+      const st = term.el.querySelector('#termStatus');
+      if (st) { st.textContent = '⏳ Connexion au réseau interbancaire…'; st.className = 'ts-status'; }
+      setTimeout(() => A.sendToPlayer({ to: ((document.getElementById('termTo') || {}).value || ''), v: parseAmount(((document.getElementById('termAmt') || {}).value)) }), reducedMotion() ? 0 : 420);
+      return;
+    }
+  });
 
   function bankDetails(d) {
     const isP = isPlayerBank(d.id);
@@ -1333,6 +1594,6 @@ const UI = (() => {
     buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails,
     openSendMoney, doSendMoney, openAnnounce, doAnnounce, openAdmin, adminDo,
     openSettings, openHelp, setWeather, reportError, levelUp, achUnlock, eventFx, screenShake,
-    loadLeaderboard, xpFx
+    loadLeaderboard, xpFx, openTerminal, closeTerminal, termRefresh, termReceipt, walletHTML
   };
 })();

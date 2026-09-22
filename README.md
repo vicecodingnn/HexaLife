@@ -12,6 +12,25 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### 💳 v11.2 — système bancaire professionnel & terminal 3D
+- **Portefeuille de cartes** cliquables, visibles sur le **tableau de bord** et l'onglet Banque :
+  carte **bleue HEXAPAY** (compte courant), carte **rouge LIVRET A**, et **noire PREMIUM**
+  (niveau 10 : compte rémunéré 0,5 %/an) — inclination 3D au curseur, reflet balayé.
+- **Terminal bancaire HEXAPAY T-800** : clic sur une carte → vol 3D (FLIP) jusqu'au
+  lecteur, **insertion animée dans la fente** (rotation + absorption), fente et LED qui
+  s'allument, écran phosphore qui s'allume (scanlines, flicker), puis menu d'opérations :
+  dépôt espèces, retrait DAB, compte↔Livret A, envoi à un joueur, relevé, échéances,
+  plafond, gel/dégel de carte… **Ticket de caisse imprimé** à chaque validation.
+- **Gel de carte** (❄) : bloque paiements par carte et mouvements depuis le compte ;
+  **plafond par opération** paramétrable ; succès dédiés (Cercle privé, Sang-froid).
+- Moteur de virements unifié `moveMoney(from,to,v)` : saisie virgule/espaces acceptée,
+  messages indiquant le solde disponible, plafond Livret A et plafond carte respectés.
+- Polish « pro » global : zebra sur tableaux, soulignement or des titres, highlights
+  internes des panneaux/ boutons, ombre portée fine de la topbar.
+- Tests : parcours terminal complet dans Chromium (insertion → virement → ticket →
+  éjection) + scénarios gel/plafond/premium/intérêts dans le smoke test.
+
+
 ### 🩹 v11.1 — correctifs de gameplay & contenu par onglet
 - **Bug racine corrigé** : les valeurs `data-*` du DOM (chaînes) étaient ignorées par le
   moteur → « ×5 » achetait 1, les boutons ± des prix/taux ne faisaient rien. Tout est

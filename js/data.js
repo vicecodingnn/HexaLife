@@ -267,7 +267,9 @@ const DATA = {
     { id:'a_jail', n:'Garde à vue', d:'Se faire interpeller', icon:'🚔', xp:30, check:G=>!!G.stats.jailed },
     { id:'a_braq', n:'Braqueur de service', d:'Réussir un braquage', icon:'💥', xp:150, check:G=>(G.stats.braquages||0) > 0 },
     { id:'a_daily7', n:'Assidu', d:'7 jours de suite en ville', icon:'📅', xp:150, check:G=>(G.daily && G.daily.streak || 0) >= 7 },
-    { id:'a_transfert', n:'Généreux', d:'Envoyer de l\'argent à un joueur', icon:'🤝', xp:50, check:G=>(G.stats.transfersSent||0) > 0 }
+    { id:'a_transfert', n:'Généreux', d:'Envoyer de l\'argent à un joueur', icon:'🤝', xp:50, check:G=>(G.stats.transfersSent||0) > 0 },
+    { id:'a_premium', n:'Cercle privé', d:'Obtenir la carte HEXAPAY Premium', icon:'💎', xp:120, check:G=>!!(G.bank && G.bank.cardPremium) },
+    { id:'a_gel', n:'Sang-froid', d:'Geler puis dégeler une carte', icon:'❄', xp:30, check:G=>!!(G.stats.frozeOnce) }
   ],
 
   events: [

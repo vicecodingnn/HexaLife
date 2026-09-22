@@ -183,7 +183,7 @@
   const NAV_IDS = ['vie', 'inventaire', 'carriere', 'marche', 'entreprises', 'banque', 'immobilier', 'auto', 'assurances', 'sante', 'skills', 'economie', 'noir', 'plus', 'profil'];
   document.addEventListener('keydown', e => {
     const inField = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '');
-    if (e.key === 'Escape') { UI.closeModal(); return; }
+    if (e.key === 'Escape') { if (document.getElementById('termOv') || document.querySelector('.term-ov')) UI.closeTerminal(true); else UI.closeModal(); return; }
     if (!G) return;
     if (e.key === 'F1') { e.preventDefault(); A.openHelp(); return; }
     if (e.altKey && !inField && e.key >= '1' && e.key <= '9') {
