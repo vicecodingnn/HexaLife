@@ -35,15 +35,20 @@ const UI = (() => {
   ];
 
   const TUTO = [
-    { sel:null, t:'Bienvenue dans HEXALIFE', x:'2 000 € en poche, un compte à ouvrir, des compétences à développer. 9 étapes pour maîtriser la ville.' },
-    { sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim et soif baissent en continu — la météo y joue aussi. Mangez depuis l’Inventaire, soignez-vous dans Santé.' },
-    { sel:'.tb-money', t:'Votre argent', x:'Le compteur doré défile à chaque mouvement. Ouvrez un compte bancaire pour tout centraliser.' },
-    { sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges et net par seconde — votre économie personnelle vit en temps réel.' },
-    { sel:'[data-id="carriere"]', t:'Formation & Emploi', x:'Temps plein exclusif ou partiel cumulable. Les diplômes débloquent les meilleurs postes.' },
-    { sel:'[data-id="marche"]', t:'Les courses', x:'Tout part dans l’Inventaire. Attention : trop manger rend malade !' },
-    { sel:'[data-id="banque"]', t:'Votre banque', x:'Compte, Livret A, crédits et transferts entre joueurs passent par là.' },
-    { sel:'[data-id="entreprises"]', t:'Vos entreprises', x:'Boulangerie, magasin, agence immo ou banque : produisez, vendez, recrutez, faites du marketing.' },
-    { sel:null, t:'À vous de jouer !', x:'Défis quotidiens, succès, loto, météo vivante… Bonus de départ : 100 €. Bonne vie, citoyen !' }
+    { tab:'vie', sel:null, t:'Bienvenue dans HEXALIFE', x:'Votre nouvelle vie française commence ici : 2 000 € en poche, 800 citoyens autour de vous. 14 étapes rapides pour tout maîtriser.' },
+    { tab:'vie', sel:'.vitals', t:'Vos jauges vitales', x:'Santé, faim et soif baissent en continu (la météo aussi joue). Mangez depuis l’Inventaire, buvez, et soignez-vous dans Santé. À 0 de santé : hôpital.' },
+    { tab:'vie', sel:'.daily-panel', t:'La récompense quotidienne', x:'Chaque jour réel, réclamerez votre récompense ici. Revenez jour après jour : la série monte jusqu’à 3 500 € au jour 7.' },
+    { tab:'vie', sel:'.strip', t:'Vos flux en direct', x:'Revenus, charges et net par seconde : votre économie personnelle vit en temps réel sous vos yeux.' },
+    { tab:'marche', sel:'.view .panel', t:'Les courses & le marché', x:'Les prix fluctuent : guettez les badges PROMO verts. Achetez par 1 ou par 5 — tout part dans l’Inventaire. Trop manger rend malade !' },
+    { tab:'inventaire', sel:'.view .panel', t:'Votre inventaire', x:'Consommez vos articles pour remonter faim et soif. La valeur totale du sac s’affiche en haut.' },
+    { tab:'carriere', sel:'.view .panel', t:'Formations & emplois', x:'La « Remise à niveau » est gratuite : c’est votre premier diplôme. Ensuite, signez un contrat (temps plein exclusif ou partiel cumulable) et négociez votre salaire avec 💼.' },
+    { tab:'banque', sel:'.bank-offer', t:'Choisissez votre banque', x:'Cliquez sur une banque pour la comparer, puis ouvrez un compte : salaires, impôts et virements passeront par là.' },
+    { tab:'banque', sel:'.wallet', t:'Vos cartes & le terminal 3D', x:'Carte bleue pour le compte, carte ROUGE pour le Livret A. Cliquez sur une carte : elle s’insère dans le terminal 3D pour toutes vos opérations.' },
+    { tab:'banque', sel:'.tr-grid', t:'Virements internes', x:'Liquide ↔ compte ↔ Livret A : saisissez un montant (virgule acceptée) ou cliquez Max, puis choisissez le sens. Le ticket s’imprime au terminal.' },
+    { tab:'entreprises', sel:'.view .panel', t:'Vos entreprises', x:'Boulangerie, magasin, agence immo ou banque : produisez, fixez vos prix, recrutez, faites du marketing. Les gros achats se paient en sans contact : glissez votre carte sur le lecteur !' },
+    { tab:'sante', sel:'.view .panel', t:'Votre santé', x:'Choisissez un médecin traitant, vaccinez-vous, et courrez 🏃 pour regagner de la santé quand vous allez bien.' },
+    { tab:'vie', sel:'.tb-money', t:'Votre solde animé', x:'En haut à droite, votre solde défile en continu vers sa nouvelle valeur, avec un halo vert (entrée) ou rouge (sortie). Les soldes de vos cartes s’animent pareil.' },
+    { tab:'vie', sel:null, t:'À vous de jouer !', x:'Défis, quêtes, succès, loto, marché noir… et votre carte premium au niveau 10. Bonus de départ : 100 €. Bonne vie, citoyen !' }
   ];
 
   let feedItems = [];
@@ -332,34 +337,50 @@ const UI = (() => {
   }
 
   /* ── Tutoriel ── */
+  /* ── Tutoriel : placement robuste, changement d'onglet auto, scroll centré ── */
+  let tutoPlacing = false;
   function placeTuto() {
     const ov = el('tutoOv'); if (!ov) return;
     if (!G || G.tuto < 0 || G.tuto >= TUTO.length) { ov.hidden = true; document.querySelectorAll('.tuto-hl').forEach(x => x.classList.remove('tuto-hl')); return; }
-    ov.hidden = false;
     const st = TUTO[G.tuto];
+    // changement d'onglet demandé par l'étape : on navigue puis on replace
+    if (st.tab && T.tab !== st.tab && !tutoPlacing) {
+      tutoPlacing = true;
+      UI.setTab(st.tab);
+      setTimeout(() => { tutoPlacing = false; placeTuto(); }, 140);
+      return;
+    }
+    ov.hidden = false;
     document.querySelectorAll('.tuto-hl').forEach(x => x.classList.remove('tuto-hl'));
     el('tutoStepLbl').textContent = (G.tuto + 1) + '/' + TUTO.length;
     el('tutoTitle').textContent = st.t;
     el('tutoText').textContent = st.x;
     el('tutoNext').textContent = G.tuto === TUTO.length - 1 ? 'Terminer ✓' : 'Suivant →';
     const card = el('tutoCard');
-    const target = st.sel ? document.querySelector(st.sel) : null;
+    let target = null;
+    try { target = st.sel ? document.querySelector(st.sel) : null; } catch (e) { target = null; }
     const visible = target && target.offsetParent !== null;
     if (visible) {
+      try { target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' }); } catch (e) {}
       target.classList.add('tuto-hl');
       const r = target.getBoundingClientRect();
+      const cw = 330, ch = card.offsetHeight || 220;
       let left = r.right + 18;
-      if (left + 330 > window.innerWidth) left = Math.max(10, r.left - 340);
+      if (left + cw > window.innerWidth - 8) left = Math.max(8, r.left - cw - 18);
+      if (left < 8) left = Math.max(8, (window.innerWidth - cw) / 2);
+      let top = clamp(r.top + r.height / 2 - ch / 2, 70, Math.max(70, window.innerHeight - ch - 20));
       card.style.left = left + 'px';
-      card.style.top = clamp(r.top, 70, window.innerHeight - 240) + 'px';
+      card.style.top = top + 'px';
     } else {
-      card.style.left = Math.max(10, (window.innerWidth / 2 - 160)) + 'px';
-      card.style.top = (window.innerHeight * 0.38) + 'px';
+      const cw = 330, ch = card.offsetHeight || 220;
+      card.style.left = Math.max(10, (window.innerWidth - cw) / 2) + 'px';
+      card.style.top = Math.max(70, (window.innerHeight - ch) * 0.4) + 'px';
     }
     const dots = el('tutoDots');
     if (dots) dots.innerHTML = TUTO.map((_, i) => '<span class="t-dot' + (i === G.tuto ? ' on' : '') + (i < G.tuto ? ' done' : '') + '"></span>').join('');
   }
   function tutoNext() {
+    if (!G || G.tuto < 0) return; // tutoriel déjà terminé : ne se réarme pas
     G.tuto++;
     FX.sound('click');
     if (G.tuto >= TUTO.length) {
@@ -437,6 +458,8 @@ const UI = (() => {
     if (T.tab === 'profil') T.achNew = 0;
     if (T.tab === 'profil') buildRail();
     updateCountdowns();
+    startCashLoop();
+    updateBalEls();
   }
   R.vie = rVie; R.inventaire = rInv; R.carriere = rCarriere; R.marche = rMarche;
   R.entreprises = rEntreprises; R.banque = rBanque; R.immobilier = rImmo; R.auto = rAuto;
@@ -665,8 +688,8 @@ const UI = (() => {
       '<div class="grid2" style="margin-top:18px">' +
       '<div class="kpi"><div class="k-lbl">Patrimoine net</div><div class="k-val gold">' + kfmt(netWorth()) + '</div>' +
       '<div class="k-lbl" style="margin-top:10px">Impôts & cotisations versés</div><div class="k-val" style="color:var(--red);font-size:16px">' + eur(G.stats.tax) + '</div></div>' +
-      '<div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val">' + eur(G.bank.compte) + '</div>' +
-      '<div class="k-lbl" style="margin-top:10px">Livret A · ' + bankRate() + ' %</div><div class="k-val" style="color:var(--red)">' + eur(G.bank.livret) + '</div>' +
+      '<div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val" data-bal="cb">' + eur(G.bank.compte) + '</div>' +
+      '<div class="k-lbl" style="margin-top:10px">Livret A · ' + bankRate() + ' %</div><div class="k-val" style="color:var(--red)" data-bal="livret">' + eur(G.bank.livret) + '</div>' +
       '<div class="bar b-gold" style="margin:10px 0 0"><div class="fill" style="width:' + (cur / need * 100) + '%"></div></div>' +
       '<div class="det" style="margin-top:6px">Niveau ' + l + ' — ' + Math.round(cur / need * 100) + ' %</div></div></div>' +
       dailyCard() +
@@ -913,8 +936,8 @@ const UI = (() => {
     return '<h1>Banque — ' + esc(bankName) + '</h1><div class="sub">Votre portefeuille de cartes, votre terminal et vos crédits.</div>' +
       walletHTML() +
       '<div class="grid2" style="margin-top:18px"><div>' +
-      '<div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val">' + eur(G.bank.compte) + '</div><div class="det" style="margin-top:4px">Liquide en poche : ' + eur(G.cash) + '</div></div>' +
-      '<div class="kpi" style="margin-top:12px"><div class="k-lbl">Livret A · ' + bankRate() + ' %/an</div><div class="k-val gold">' + eur(G.bank.livret) + '</div><div class="det" style="margin-top:4px">Plafond 22 950 € · place restante ' + eur(Math.max(0, 22950 - G.bank.livret)) + '</div></div>' +
+      '<div class="kpi"><div class="k-lbl">Compte courant</div><div class="k-val" data-bal="cb">' + eur(G.bank.compte) + '</div><div class="det" style="margin-top:4px">Liquide en poche : <span data-bal="cash">' + eur(G.cash) + '</span></div></div>' +
+      '<div class="kpi" style="margin-top:12px"><div class="k-lbl">Livret A · ' + bankRate() + ' %/an</div><div class="k-val gold" data-bal="livret">' + eur(G.bank.livret) + '</div><div class="det" style="margin-top:4px">Plafond 22 950 € · place restante ' + eur(Math.max(0, 22950 - G.bank.livret)) + '</div></div>' +
       '<div class="btn-row" style="margin-top:14px"><button class="btn btn-primary" data-act="openSendMoney">💸 Envoyer de l’argent</button>' +
       '<button class="btn btn-danger btn-sm" data-act="leaveBank">Clôturer le compte</button></div></div>' +
       '<div class="kpi"><div class="k-lbl">Prélèvements mensuels (60 s)</div>' +
@@ -965,7 +988,7 @@ const UI = (() => {
       '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + esc(brand) + '</span></div>' +
       '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
       '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div>' +
-      '<div style="text-align:right"><div class="bc-lbl">' + esc(subtitle) + '</div><div class="bc-bal">' + eur(bal) + '</div></div></div></div>';
+      '<div style="text-align:right"><div class="bc-lbl">' + esc(subtitle) + '</div><div class="bc-bal" data-bal="' + which + '">' + eur(bal) + '</div></div></div></div>';
   }
   function lockedCard() {
     const ok = level(G.xp) >= 10;
@@ -1223,6 +1246,171 @@ const UI = (() => {
     }
   });
 
+  /* ═══════════ PAIEMENT SANS CONTACT (NFC) — glisser la carte sur le lecteur ═══════════ */
+  let nfc = null;
+  function nfcPay(o) {
+    if (nfc || !G) return;
+    FX.sound('click');
+    const ov = document.createElement('div');
+    ov.className = 'nfc-ov';
+    const skin = G.bank.cardPremium ? 'skin-black' : 'skin-blue';
+    ov.innerHTML =
+      '<div class="nfc-back"></div>' +
+      '<div class="nfc-scene">' +
+        '<div class="nfc-pad" id="nfcPad">' +
+          '<div class="nfc-waves"><i></i><i></i><i></i></div>' +
+          '<div class="nfc-sym">)))</div>' +
+          '<div class="nfc-amt">' + eur(o.cost) + '</div>' +
+          '<div class="nfc-lbl">' + esc(o.label || 'Paiement') + '</div>' +
+          '<div class="nfc-state" id="nfcState">Approchez votre carte…</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="nfc-card" id="nfcCard"><div class="pcard ' + skin + ' nfc-pcard">' +
+        '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + (G.bank.cardPremium ? 'HEXAPAY PREMIUM' : 'HEXAPAY') + '</span></div>' +
+        '<div class="bc-num">•••• •••• •••• 4242</div>' +
+        '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div></div>' +
+      '</div></div>' +
+      '<div class="nfc-hint">' + (reducedMotion() ? 'Confirmez le paiement sur le lecteur.' : '🖱 Faites <b>glisser la carte</b> sur le lecteur pour payer en sans contact') + '</div>' +
+      '<button class="btn btn-ghost nfc-cancel" data-act="nfcCancel">Annuler l’achat</button>';
+    document.body.appendChild(ov);
+    const pad = ov.querySelector('#nfcPad');
+    const card = ov.querySelector('#nfcCard');
+    nfc = { cost: o.cost, label: o.label, act: o.act, data: o.data || {}, el: ov, pad, card, done: false, dragging: false };
+
+    // position de repos de la carte (à droite du lecteur)
+    const home = () => {
+      const pr = pad.getBoundingClientRect();
+      return { x: Math.min(window.innerWidth - 280, pr.right + 70), y: pr.top + pr.height / 2 - 81 };
+    };
+    const h0 = home();
+    card.style.left = h0.x + 'px'; card.style.top = h0.y + 'px';
+    nfc.home = h0;
+
+    if (!reducedMotion()) {
+      let ox = 0, oy = 0;
+      const onMove = e => {
+        if (!nfc || !nfc.dragging || nfc.done) return;
+        const x = e.clientX - ox, y = e.clientY - oy;
+        card.style.left = x + 'px'; card.style.top = y + 'px';
+        const pr = pad.getBoundingClientRect();
+        const over = e.clientX > pr.left - 14 && e.clientX < pr.right + 14 && e.clientY > pr.top - 14 && e.clientY < pr.bottom + 14;
+        pad.classList.toggle('hover', over);
+        card.style.setProperty('--tilt', Math.max(-10, Math.min(10, (e.movementX || 0) * 0.6)) + 'deg');
+      };
+      const onUp = e => {
+        if (!nfc || !nfc.dragging || nfc.done) return;
+        nfc.dragging = false;
+        card.classList.remove('drag');
+        pad.classList.remove('hover');
+        const pr = pad.getBoundingClientRect();
+        const cx = e.clientX, cy = e.clientY;
+        if (cx > pr.left - 14 && cx < pr.right + 14 && cy > pr.top - 14 && cy < pr.bottom + 14) nfcTap();
+        else { card.classList.add('home'); card.style.left = nfc.home.x + 'px'; card.style.top = nfc.home.y + 'px'; setTimeout(() => card && card.classList.remove('home'), 450); }
+      };
+      card.addEventListener('pointerdown', e => {
+        if (!nfc || nfc.done) return;
+        nfc.dragging = true;
+        const r = card.getBoundingClientRect();
+        ox = e.clientX - r.left; oy = e.clientY - r.top;
+        card.classList.add('drag');
+        e.preventDefault();
+      });
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      // nettoyage des listeners à la fermeture
+      const clean = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+      ov.addEventListener('remove', clean);
+      nfc.clean = clean;
+    }
+    // repli accessible : cliquer le lecteur = payer
+    pad.addEventListener('click', () => nfcTap());
+  }
+  function nfcTap() {
+    if (!nfc || nfc.done) return;
+    nfc.done = true;
+    const { card, pad, el } = nfc;
+    const pr = pad.getBoundingClientRect();
+    card.classList.add('tap');
+    card.style.left = (pr.left + pr.width / 2 - 110) + 'px';
+    card.style.top = (pr.top + pr.height / 2 - 68) + 'px';
+    pad.classList.add('active');
+    FX.sound('nfc');
+    setTimeout(() => FX.sound('nfcOk'), 240);
+    const st = el.querySelector('#nfcState');
+    if (st) { st.textContent = '✓ Paiement accepté — ' + eur(nfc.cost); st.classList.add('ok'); }
+    setTimeout(() => FX.spark(pr.left + pr.width / 2, pr.top + pr.height / 2, '#4bb380', 18), 300);
+    setTimeout(() => {
+      if (!nfc) return;
+      const { act, data } = nfc;
+      nfcClose(true);
+      if (act && A[act]) A[act](data);
+    }, 950);
+  }
+  function nfcForce() { // tests & accessibilité : exécute immédiatement, sans animation
+    if (!nfc) return;
+    const { act, data, el, clean } = nfc;
+    nfc = null;
+    if (clean) clean();
+    el.remove();
+    if (act && A[act]) A[act](data);
+  }
+  function nfcClose(executed) {
+    if (!nfc) return;
+    const n = nfc; nfc = null;
+    if (n.clean) n.clean();
+    n.el.classList.add('out');
+    setTimeout(() => n.el.remove(), 350);
+    if (!executed) FX.sound('back');
+  }
+
+  /* ═══════════ SOLDES ANIMÉS (cartes & KPI) + COMPTEUR HAUT-DROIT 60 fps ═══════════ */
+  const balDisp = {};
+  function updateBalEls() {
+    if (!G) return;
+    document.querySelectorAll('[data-bal]').forEach(e2 => {
+      const k = e2.dataset.bal;
+      const target = k === 'cb' ? G.bank.compte : k === 'livret' ? G.bank.livret : k === 'cash' ? G.cash : k === 'net' ? netWorth() : 0;
+      let cur = (k in balDisp) ? balDisp[k] : target;
+      const diff = target - cur;
+      if (Math.abs(diff) < 0.005) cur = target; else cur += diff * 0.22;
+      balDisp[k] = cur;
+      const txt = eur(cur);
+      if (e2.__lastTxt !== txt) {
+        e2.__lastTxt = txt; e2.textContent = txt;
+        if (Math.abs(diff) >= 0.5) {
+          e2.classList.remove('bal-up', 'bal-down'); void e2.offsetWidth;
+          e2.classList.add(diff > 0 ? 'bal-up' : 'bal-down');
+        }
+      }
+    });
+  }
+  let cashRaf = 0, cashPrevT = 0;
+  function startCashLoop() {
+    if (cashRaf) return;
+    const loop = t => {
+      cashRaf = requestAnimationFrame(loop);
+      const dt = Math.min(50, t - (cashPrevT || t)); cashPrevT = t;
+      if (!G || document.hidden) return;
+      const bal = balance();
+      const diff = bal - T.cashDisp;
+      if (Math.abs(diff) < 0.005) T.cashDisp = bal;
+      else T.cashDisp += diff * Math.min(1, dt * 0.0075);
+      const c = el('tbCash');
+      if (!c) return;
+      const txt = eur(T.cashDisp);
+      if (c.__lastTxt !== txt) { c.__lastTxt = txt; c.textContent = txt; }
+      const flowing = Math.abs(diff) >= 0.5;
+      const cls = flowing ? (diff > 0 ? 'flow-up' : 'flow-down') : '';
+      if (c.__flowCls !== cls) {
+        c.__flowCls = cls;
+        c.classList.remove('flow-up', 'flow-down');
+        if (cls) c.classList.add(cls);
+      }
+      c.classList.toggle('neg', bal < 0);
+    };
+    cashRaf = requestAnimationFrame(loop);
+  }
+
   function bankDetails(d) {
     const isP = isPlayerBank(d.id);
     const pnj = isP ? null : DATA.banks.find(b => b.id === d.id);
@@ -1447,22 +1635,8 @@ const UI = (() => {
   function tickUI() {
     if (!G) return;
     const bal = balance();
-    T.cashDisp += (bal - T.cashDisp) * 0.14;
-    if (Math.abs(T.cashDisp - bal) < 0.01) T.cashDisp = bal;
-    const c = el('tbCash');
-    if (c) {
-      const txt = eur(T.cashDisp);
-      if (txt !== lastCashTxt) {
-        c.textContent = txt;
-        if (lastCashTxt && Math.abs(T.cashDisp - bal) > Math.max(1, Math.abs(bal) * 0.002)) {
-          c.classList.remove('bump-up', 'bump-down'); void c.offsetWidth;
-          c.classList.add(T.cashDisp >= bal ? 'bump-up' : 'bump-down');
-        }
-        lastCashTxt = txt;
-      }
-      c.classList.toggle('neg', bal < 0);
-      const lbl = el('tbCashLbl'); if (lbl) lbl.textContent = G.bank.bankId ? 'compte' : 'liquide';
-    }
+    updateBalEls();
+    { const lbl = el('tbCashLbl'); if (lbl) lbl.textContent = G.bank.bankId ? 'compte' : 'liquide'; }
     const v = G.vitals;
     const setBar = (id, n, val, low) => {
       const b = el(id); if (b) b.style.width = clamp(val, 0, 100) + '%';
@@ -1594,6 +1768,7 @@ const UI = (() => {
     buildTicker, drawCharts, authTab, tutoNext, tutoSkip, placeTuto, bankDetails,
     openSendMoney, doSendMoney, openAnnounce, doAnnounce, openAdmin, adminDo,
     openSettings, openHelp, setWeather, reportError, levelUp, achUnlock, eventFx, screenShake,
-    loadLeaderboard, xpFx, openTerminal, closeTerminal, termRefresh, termReceipt, walletHTML
+    loadLeaderboard, xpFx, openTerminal, closeTerminal, termRefresh, termReceipt, walletHTML,
+    nfcPay, nfcClose, nfcForce, updateBalEls
   };
 })();

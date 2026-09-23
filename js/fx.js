@@ -250,7 +250,9 @@ const FX = (() => {
     craft:  { type:'sine',     seq:[[392,0,.05],[523,.04,.07]], vol:.2 },
     eat:    { type:'sine',     seq:[[300,0,.045],[230,.05,.06]], vol:.22 },
     ach:    { type:'triangle', seq:[[659,0,.08],[880,.09,.08],[1319,.18,.26]], vol:.32 },
-    bell:   { type:'sine',     seq:[[1047,0,.3]], vol:.14 }
+    bell:   { type:'sine',     seq:[[1047,0,.3]], vol:.14 },
+    nfc:    { type:'sine',     seq:[[2093,0,.06],[2093,.09,.06]], vol:.26 },
+    nfcOk:  { type:'triangle', seq:[[1319,0,.07],[1760,.09,.14]], vol:.3 }
   };
   const lastPlay = {};
   function sound(name) {
@@ -284,7 +286,7 @@ const FX = (() => {
     } catch (e) { /* audio non disponible : silencieux */ }
   }
 
-  /* ── Graphiques ligne animés (morphing) ── */
+  /* ── Graphiques ligne animés (morphing, reveal, axes, tooltip) ── */
   function chart(cv, data, color, opts) {
     if (!cv || !cv.getContext) return;
     const o = opts || {};
@@ -299,10 +301,8 @@ const FX = (() => {
     const src = (data || []).map(v => (typeof v === 'number' && isFinite(v)) ? v : 0);
     const prev = Array.isArray(cv.__fxPrev) ? cv.__fxPrev : null;
     cv.__fxPrev = src.slice();
-    cv.__fxTarget = src;
     if (cv.__fxRaf) cancelAnimationFrame(cv.__fxRaf);
 
-    // données interpolées : même longueur que la cible, départ = prev (ré-échantillonné)
     let from = src.slice();
     if (prev && prev.length && !reduced()) {
       from = src.map((_, i) => {
@@ -312,7 +312,8 @@ const FX = (() => {
     } else if (!prev && !reduced()) {
       from = src.map(() => src.length ? src[src.length - 1] : 0);
     }
-    const t0 = performance.now(), dur = reduced() ? 0 : (o.fast ? 220 : 420);
+    const first = !cv.__fxRevealed;
+    const t0 = performance.now(), dur = reduced() ? 0 : (o.fast ? 240 : 460);
 
     function frame(now) {
       const ctx2 = cv.getContext('2d');
@@ -322,16 +323,40 @@ const FX = (() => {
       const k = dur ? Math.min(1, (now - t0) / dur) : 1;
       const e = 1 - Math.pow(1 - k, 3);
       const vals = src.map((v, i) => from[i] + (v - from[i]) * e);
-      drawChartFrame(ctx2, vals, color, w, h, o, e);
+      const reveal = first ? e : 1;
+      drawChartFrame(ctx2, vals, color, w, h, o, reveal, cv.__fxHover);
+      cv.__fxLast = { vals, color, w, h, o };
       if (k < 1) cv.__fxRaf = requestAnimationFrame(frame);
-      else cv.__fxRaf = 0;
+      else { cv.__fxRaf = 0; cv.__fxRevealed = true; }
     }
     cv.__fxRaf = requestAnimationFrame(frame);
+
+    /* survol : crosshair + tooltip (une seule fois par canvas) */
+    if (!cv.__fxBound && !o.noHover) {
+      cv.__fxBound = true;
+      cv.style.cursor = 'crosshair';
+      cv.addEventListener('mousemove', ev => {
+        const L = cv.__fxLast; if (!L || !L.vals || L.vals.length < 2) return;
+        const r = cv.getBoundingClientRect();
+        const pad = 5;
+        const x = ev.clientX - r.left;
+        const i = Math.round((x - pad) / ((r.width - pad * 2) / (L.vals.length - 1)));
+        cv.__fxHover = Math.max(0, Math.min(L.vals.length - 1, i));
+        const ctx3 = cv.getContext('2d');
+        if (ctx3) { ctx3.setTransform(dpr, 0, 0, dpr, 0, 0); ctx3.clearRect(0, 0, L.w, L.h); drawChartFrame(ctx3, L.vals, L.color, L.w, L.h, L.o, 1, cv.__fxHover); }
+      });
+      cv.addEventListener('mouseleave', () => {
+        cv.__fxHover = null;
+        const L = cv.__fxLast; const ctx3 = cv.getContext('2d');
+        if (L && ctx3) { ctx3.setTransform(dpr, 0, 0, dpr, 0, 0); ctx3.clearRect(0, 0, L.w, L.h); drawChartFrame(ctx3, L.vals, L.color, L.w, L.h, L.o, 1, null); }
+      });
+    }
   }
 
-  function drawChartFrame(c, vals, color, w, h, o, e) {
+  function drawChartFrame(c, vals, color, w, h, o, reveal, hover) {
     const pad = 5;
-    // grille
+    const fmtV = o.fmt || (v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + ' k' : Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2));
+    // grille + axes
     c.strokeStyle = 'rgba(255,255,255,.055)';
     c.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
@@ -349,9 +374,20 @@ const FX = (() => {
     const px = i => pad + i * (w - pad * 2) / (vals.length - 1);
     const py = v => h - pad - ((v - min) / span) * (h - pad * 2 - 4);
 
+    // étiquettes d'axe (max / min)
+    c.fillStyle = 'rgba(139,161,172,.55)';
+    c.font = '9px "IBM Plex Mono", monospace';
+    c.textAlign = 'left';
+    c.fillText(fmtV(max), 3, 9);
+    c.fillText(fmtV(min), 3, h - 3);
+
+    // reveal clip (premier affichage)
+    c.save();
+    if (reveal < 1) { c.beginPath(); c.rect(0, 0, Math.max(2, w * reveal), h); c.clip(); }
+
     // remplissage dégradé
     const grad = c.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, hexA(color, 0.20)); grad.addColorStop(1, hexA(color, 0.0));
+    grad.addColorStop(0, hexA(color, 0.22)); grad.addColorStop(1, hexA(color, 0.0));
     c.beginPath();
     c.moveTo(px(0), py(vals[0]));
     for (let i = 1; i < vals.length; i++) {
@@ -361,30 +397,70 @@ const FX = (() => {
     c.lineTo(px(vals.length - 1), h); c.lineTo(px(0), h); c.closePath();
     c.fillStyle = grad; c.fill();
 
-    // ligne
-    c.beginPath();
-    c.moveTo(px(0), py(vals[0]));
-    for (let i = 1; i < vals.length; i++) {
-      const xm = (px(i - 1) + px(i)) / 2;
-      c.bezierCurveTo(xm, py(vals[i - 1]), xm, py(vals[i]), px(i), py(vals[i]));
-    }
-    c.strokeStyle = color; c.lineWidth = 1.7; c.lineJoin = 'round';
-    c.shadowColor = hexA(color, 0.5); c.shadowBlur = 6;
+    // ligne : passe large translucide + cœur lumineux
+    const path = () => {
+      c.beginPath();
+      c.moveTo(px(0), py(vals[0]));
+      for (let i = 1; i < vals.length; i++) {
+        const xm = (px(i - 1) + px(i)) / 2;
+        c.bezierCurveTo(xm, py(vals[i - 1]), xm, py(vals[i]), px(i), py(vals[i]));
+      }
+    };
+    path();
+    c.strokeStyle = hexA(color, 0.22); c.lineWidth = 4.5; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke();
+    path();
+    c.strokeStyle = color; c.lineWidth = 1.8;
+    c.shadowColor = hexA(color, 0.55); c.shadowBlur = 7;
     c.stroke();
     c.shadowBlur = 0;
 
-    // ligne zéro si pertinente
+    // ligne zéro
     if (o.zero && min < 0 && max > 0) {
       c.strokeStyle = 'rgba(255,255,255,.16)'; c.setLineDash([3, 4]);
       c.beginPath(); c.moveTo(0, py(0)); c.lineTo(w, py(0)); c.stroke(); c.setLineDash([]);
     }
-    // point final lumineux
+    c.restore();
+
+    // crosshair + tooltip au survol
+    if (hover != null && vals[hover] != null) {
+      const hx = px(hover), hy = py(vals[hover]);
+      c.strokeStyle = 'rgba(255,255,255,.22)'; c.setLineDash([2, 3]);
+      c.beginPath(); c.moveTo(hx, 0); c.lineTo(hx, h); c.stroke(); c.setLineDash([]);
+      c.fillStyle = color; c.beginPath(); c.arc(hx, hy, 3.2, 0, 6.2832); c.fill();
+      const label = (o.hoverLabel ? o.hoverLabel(hover) : '#' + (hover + 1)) + '  ' + fmtV(vals[hover]);
+      c.font = '10px "IBM Plex Mono", monospace';
+      const tw = c.measureText(label).width + 12;
+      const bx = Math.min(w - tw - 2, Math.max(2, hx - tw / 2));
+      const by = Math.max(2, hy - 24);
+      c.fillStyle = 'rgba(10,16,19,.92)';
+      c.strokeStyle = hexA(color, 0.5); c.lineWidth = 1;
+      roundRect(c, bx, by, tw, 17, 4); c.fill(); c.stroke();
+      c.fillStyle = '#e9eef1'; c.textAlign = 'left';
+      c.fillText(label, bx + 6, by + 12);
+    }
+
+    // point final + étiquette de valeur
     const lx = px(vals.length - 1), ly = py(vals[vals.length - 1]);
     const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 380);
-    c.fillStyle = hexA(color, 0.25 * pulse * e);
+    c.fillStyle = hexA(color, 0.25 * pulse * (reveal || 1));
     c.beginPath(); c.arc(lx, ly, 6.5, 0, 6.2832); c.fill();
     c.fillStyle = color;
     c.beginPath(); c.arc(lx, ly, 2.4, 0, 6.2832); c.fill();
+    const lv = fmtV(vals[vals.length - 1]);
+    c.font = '700 10px "IBM Plex Mono", monospace';
+    c.textAlign = 'right';
+    c.fillStyle = hexA(color, 0.95);
+    c.fillText(lv, w - 3, Math.max(10, Math.min(h - 4, ly - 8)));
+    c.textAlign = 'left';
+  }
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
   }
   function hexA(rgb, a) {
     // rgb: 'rgb(r,g,b)' ou '#rrggbb'

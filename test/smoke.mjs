@@ -295,6 +295,59 @@ run('régressions v11.1', `
 `);
 await sleep(1500); // laisse l'animation d'éjection se terminer
 run('terminal fermé', `if (document.querySelector('.term-ov')) throw new Error('overlay terminal resté ouvert');`);
+
+// ── v11.3 : PAIEMENT SANS CONTACT (NFC) sur gros achats ──
+run('NFC gros achats', `
+  A.openBank({id:'ce', name:"Caisse d'Épargne", rate:'3.0'});
+  G.bank.compte = 50000; G.cash = 0; G.training = null;
+  A.train({id:'dev'});
+  if (!document.querySelector('.nfc-ov:not(.out)')) throw new Error('overlay NFC absent sur formation');
+  if (G.training) throw new Error('formation démarrée AVANT paiement NFC');
+  UI.nfcForce();
+  if (!G.training) throw new Error('formation non démarrée après NFC');
+  if (document.querySelector('.nfc-ov:not(.out)')) throw new Error('overlay NFC resté ouvert');
+  G.training = null;
+  A.buyCar({i:'5'});
+  if (!document.querySelector('.nfc-ov:not(.out)')) throw new Error('overlay NFC absent sur voiture');
+  A.nfcCancel();
+  if (G.cars.length) throw new Error('voiture achetée malgré annulation NFC');
+  if (document.querySelector('.nfc-ov:not(.out)')) throw new Error('overlay NFC resté après annulation');
+  // sans banque : paiement immédiat (pas de cérémonie)
+  const bid = G.bank.bankId; G.bank.bankId = null;
+  G.cash = 60000;
+  A.buyCar({i:'0'});
+  if (!G.cars.includes(0)) throw new Error('achat immédiat sans banque cassé');
+  G.cars = []; G.bank.bankId = bid; G.cash = 5e6; G.bank.compte = 5e6;
+`);
+
+// ── v11.3 : tutoriel 14 étapes sans bug ──
+run('tutoriel v11.3', `
+  G.tuto = 0; G.stats.tutoDone = false;
+  for (let i = 0; i < 20 && G.tuto >= 0; i++) { UI.placeTuto(); A.tutoNext(); }
+  if (G.tuto !== -1 || !G.stats.tutoDone) throw new Error('tutoriel non terminé proprement');
+  if (!document.getElementById('tutoOv').hidden) throw new Error('overlay tutoriel resté visible');
+  G.tuto = 3; UI.placeTuto();
+  const lbl = document.getElementById('tutoStepLbl').textContent;
+  if (lbl !== '4/14') throw new Error('compteur étapes faux : ' + lbl);
+  G.tuto = -1; UI.placeTuto();
+`);
+
+// ── v11.3 : soldes animés + courbes ──
+run('soldes animés & courbes', `
+  UI.setTab('banque');
+  if (!document.querySelector('[data-bal="cb"]')) throw new Error('data-bal cb absent');
+  if (!document.querySelector('[data-bal="livret"]')) throw new Error('data-bal livret absent');
+  G.bank.compte += 1234;
+  UI.updateBalEls(); UI.updateBalEls();
+  const elCb = document.querySelector('[data-bal="cb"]');
+  if (!/€/.test(elCb.textContent)) throw new Error('solde carte non formaté : ' + elCb.textContent);
+  const cv = document.createElement('canvas');
+  FX.chart(cv, [1, 2, 3, 4, 5], 'rgb(10,20,30)', {});
+  cv.__fxHover = 2;
+  FX.chart(cv, [1, 2, 3, 4, 5], 'rgb(10,20,30)', {});
+  UI.setTab('vie');
+`);
+await sleep(300);
 await sleep(80);
 run('quotidien', `
   if (!canClaimDaily()) throw new Error('daily devrait être réclamable (nouvelle partie)');
@@ -334,10 +387,11 @@ run('emploi', `
 // ── entreprises ──
 run('entreprises', `
   G.diplomas.push('cap_bl','carteT','amf'); G.diplomas=[...new Set(G.diplomas)];
-  A.openCreate({type:'boulangerie'}); A.createBiz({type:'boulangerie'});
-  A.openCreate({type:'magasin'}); A.createBiz({type:'magasin'});
-  A.openCreate({type:'immobilier'}); A.createBiz({type:'immobilier'});
-  A.openCreate({type:'banque'}); A.createBiz({type:'banque'});
+  const nf = () => { if (document.querySelector('.nfc-ov:not(.out)')) UI.nfcForce(); };
+  A.openCreate({type:'boulangerie'}); A.createBiz({type:'boulangerie'}); nf();
+  A.openCreate({type:'magasin'}); A.createBiz({type:'magasin'}); nf();
+  A.openCreate({type:'immobilier'}); A.createBiz({type:'immobilier'}); nf();
+  A.openCreate({type:'banque'}); A.createBiz({type:'banque'}); nf();
   if (G.biz.length !== 4) throw new Error('4 entreprises attendues, obtenu ' + G.biz.length);
   A.selBiz({i:'0'});
   ['overview','prod','mkt','hr','ups','compta'].forEach(t=>A.bizTab({t}));
@@ -419,6 +473,7 @@ run('modales', `
   A.openBank({id:'ce', name:"Caisse d'Épargne", rate:'3.0'});
   UI.openSendMoney(); UI.doSendMoney();
   A.openCreate({type:'magasin'}); A.createBiz({type:'magasin'});
+  if (document.querySelector('.nfc-ov:not(.out)')) UI.nfcForce();
   UI.openAnnounce(); UI.doAnnounce();
   UI.openAdmin();
   UI.modal('<h2>x</h2>'); UI.closeModal();

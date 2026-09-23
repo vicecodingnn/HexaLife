@@ -89,11 +89,11 @@ try {
   await shot('05-jeu-accueil-tuto');
 
   // tutoriel : aller au bout
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 16; i++) {
     const btn = await page.$('#tutoNext');
-    if (!btn) break;
+    if (!btn || !(await btn.isVisible())) break;
     await btn.click();
-    await sleep(220);
+    await sleep(260);
   }
   await sleep(500);
   await shot('06-accueil');
@@ -164,6 +164,30 @@ try {
   await sleep(700);
   await shot('13e-accueil-portefeuille');
 
+  // ── PAIEMENT SANS CONTACT : gros achat (formation) avec drag de la carte sur le lecteur ──
+  await page.evaluate(() => { G.cash = 0; G.bank.compte = 20000; G.diplomas = []; G.training = null; UI.render(true); });
+  await page.click('[data-id="carriere"]');
+  await sleep(600);
+  await page.click('[data-act="train"][data-id="dev"]');
+  await sleep(700);
+  const nfcOn = await page.evaluate(() => !!document.querySelector('.nfc-ov'));
+  if (!nfcOn) errors.push('NFC : overlay absent sur gros achat');
+  else {
+    const cardBox = await page.locator('#nfcCard').boundingBox();
+    const padBox = await page.locator('#nfcPad').boundingBox();
+    await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(padBox.x + padBox.width / 2, padBox.y + padBox.height / 2, { steps: 14 });
+    await sleep(300);
+    await shot('15-nfc-drag-carte');
+    await page.mouse.up();
+    await sleep(420);
+    await shot('15b-nfc-paiement-accepte');
+    await sleep(1000);
+    const trained = await page.evaluate(() => !!G.training && !document.querySelector('.nfc-ov'));
+    if (!trained) errors.push('NFC : formation non démarrée après paiement sans contact');
+  }
+
   // entreprise : fonder une boulangerie
   await page.evaluate(() => { G.diplomas.push('cap_bl'); G.cash = 0; G.bank.compte = 250000; UI.render(true); });
   await page.click('[data-id="entreprises"]');
@@ -171,7 +195,8 @@ try {
   await page.click('[data-act="openCreate"][data-type="boulangerie"]');
   await sleep(400);
   await page.click('[data-act="createBiz"]');
-  await sleep(900);
+  await sleep(600);
+  if (await page.$('.nfc-ov')) { await page.click('#nfcPad'); await sleep(1400); }
   await shot('14-entreprise-detail');
   // onglet production : acheter matières + fabriquer
   await page.click('[data-act="bizTab"][data-t="prod"]');
@@ -274,7 +299,7 @@ try {
   await mob.click('#rg_btn');
   await mob.waitForFunction(() => document.getElementById('scr-app').classList.contains('active'), { timeout: 10000 }).catch(() => {});
   await sleep(1200);
-  for (let i = 0; i < 9; i++) { const b = await mob.$('#tutoNext'); if (!b) break; await b.click(); await sleep(150); }
+  for (let i = 0; i < 16; i++) { const b = await mob.$('#tutoNext'); if (!b || !(await b.isVisible())) break; await b.click(); await sleep(180); }
   await sleep(400);
   await mob.screenshot({ path: path.join(SHOTS, '28-mobile-accueil.png') });
   await mob.click('[data-id="marche"]').catch(() => {});

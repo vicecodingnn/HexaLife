@@ -12,6 +12,25 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### ✨ v11.3 — paiement sans contact, tutoriel complet, courbes pro, soldes vivants
+- **Paiement sans contact (NFC) sur les gros achats** (formations, voitures, biens,
+  créations d'entreprise — pas les courses) : un lecteur apparaît, et **c'est vous qui
+  faites glisser la carte à la souris** jusqu'au pad : ondes NFC animées, double bip
+  synthétisé, halo vert « ✓ Paiement accepté », puis l'achat s'exécute. Annuler = achat
+  abandonné. Sans compte bancaire : paiement immédiat (aucune gêne pour les nouveaux).
+  Repli accessible : cliquer le lecteur paie directement ; animations réduites respectées.
+- **Tutoriel refondu : 14 étapes** qui **changent d'onglet automatiquement**, scrollent
+  la cible au centre, texte enrichi (marché, cartes & terminal, virements, sport, solde
+  animé…) ; plus aucun bug de placement ni de ré-armement après fin.
+- **Courbes de statistiques pro** : étiquettes min/max, valeur finale, reveal animé au
+  premier affichage, double passe lumineuse, et **tooltip + crosshair au survol**.
+- **Soldes des cartes & KPI animés en continu** (compte, Livret A, liquide) : tween
+  60 fps sans rafraîchissement de page, flash vert/rouge à chaque variation.
+- **Compteur haut-droit refait** : défilement fluide permanent + halo directionnel
+  (vert = entrées, rouge = sorties) pendant les flux ; jetons de flux en pills lisibles.
+- Bugs corrigés : `bal` indéfini dans tickUI, carte NFC hors champ (containing block
+  d'animation transform), tutoriel qui se ré-armait, overlay NFC résiduel.
+
 ### 💳 v11.2 — système bancaire professionnel & terminal 3D
 - **Portefeuille de cartes** cliquables, visibles sur le **tableau de bord** et l'onglet Banque :
   carte **bleue HEXAPAY** (compte courant), carte **rouge LIVRET A**, et **noire PREMIUM**

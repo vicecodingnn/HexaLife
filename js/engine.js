@@ -456,6 +456,12 @@ function guardCardPay() {
   }
   return true;
 }
+/* Gros achats : cérémonie sans contact (NFC) si une carte existe, sinon immédiat */
+function payFlow(cost, label, act, data) {
+  cost = num(cost, 0);
+  if (!(cost > 0) || !G.bank.bankId) { A[act](data || {}); return; }
+  UI.nfcPay({ cost, label, act, data: data || {} });
+}
 function srcBalance(src) {
   if (src === 'cash') return G.cash;
   if (src === 'compte') return G.bank.compte;
@@ -920,6 +926,11 @@ const A = {
     if (G.training) return UI.toast('Formation déjà en cours.', 'warn');
     const f = DATA.form.find(x => x.id === d.id); if (!f || G.diplomas.includes(d.id)) return;
     if (balance() < f.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    payFlow(f.cost, 'Formation — ' + f.n, 'trainExec', d);
+  },
+  trainExec(d) {
+    const f = DATA.form.find(x => x.id === d.id); if (!f || G.training) return;
+    if (balance() < f.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
     if (f.cost > 0) { pay(f.cost, 'Formation — ' + f.n, 'out'); G.stats.spent += f.cost; }
     G.training = { id: f.id, end: Date.now() + f.dur * 1000 };
     FX.sound('buy');
@@ -980,6 +991,12 @@ const A = {
     if (bt.req && !G.diplomas.includes(bt.req)) { UI.closeModal(); return UI.toast('Formation requise.', 'bad'); }
     if (balance() < bt.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
     if (G.biz.length >= 8) return UI.toast('Maximum 8 entreprises.', 'warn');
+    payFlow(bt.cost, 'Capital — ' + bt.label, 'createBizExec', d);
+  },
+  createBizExec(d) {
+    const bt = DATA.bizTypes[d.type]; if (!bt) return UI.closeModal();
+    if (balance() < bt.cost) { FX.sound('error'); UI.closeModal(); return UI.toast('Fonds insuffisants.', 'bad'); }
+    if (G.biz.length >= 8) { UI.closeModal(); return UI.toast('Maximum 8 entreprises.', 'warn'); }
     const inp = document.getElementById('bizName');
     const name = ((inp && inp.value) || bt.label).trim().slice(0, 40) || bt.label;
     pay(bt.cost, 'Capital — ' + bt.label, 'out'); G.stats.spent += bt.cost;
@@ -1127,6 +1144,12 @@ const A = {
     const i = idxOk(d.i, DATA.homes.length); if (i < 0) return;
     const h = DATA.homes[i];
     if (balance() < h.p) { FX.sound('error'); return UI.toast('Apport insuffisant.', 'bad'); }
+    payFlow(h.p, 'Achat — ' + h.n, 'buyHomeExec', d);
+  },
+  buyHomeExec(d) {
+    const i = idxOk(d.i, DATA.homes.length); if (i < 0) return;
+    const h = DATA.homes[i];
+    if (balance() < h.p) { FX.sound('error'); return UI.toast('Apport insuffisant.', 'bad'); }
     pay(h.p, 'Achat — ' + h.n, 'out'); G.stats.spent += h.p;
     G.houses.push({ i, v: h.p, c: h.c, rent: +(h.p * 0.004 / 60).toFixed(2), tenant: false });
     addXp(60); UI.confetti(); FX.sound('win');
@@ -1168,6 +1191,12 @@ const A = {
     const i = idxOk(d.i, DATA.cars.length); if (i < 0) return;
     const c = DATA.cars[i];
     if (G.cars.includes(i)) return UI.toast('Vous possédez déjà ce modèle.', 'warn');
+    if (balance() < c.p) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
+    payFlow(c.p, 'Achat — ' + c.n, 'buyCarExec', d);
+  },
+  buyCarExec(d) {
+    const i = idxOk(d.i, DATA.cars.length); if (i < 0 || G.cars.includes(i)) return;
+    const c = DATA.cars[i];
     if (balance() < c.p) { FX.sound('error'); return UI.toast('Fonds insuffisants.', 'bad'); }
     pay(c.p, 'Achat — ' + c.n, 'out'); G.stats.spent += c.p; G.cars.push(i); addXp(40);
     UI.confetti(); FX.sound('win');
@@ -1319,6 +1348,7 @@ const A = {
     UI.toast('💎 Carte HEXAPAY Premium obtenue : compte rémunéré 0,5 %/an !', 'good');
     maybeAch(); save(); refresh();
   },
+  nfcCancel() { UI.nfcClose(false); },
   openTerminal(d) { UI.openTerminal(d.which === 'livret' ? 'livret' : d.which === 'premium' ? 'premium' : 'cb'); },
   termEject() { UI.closeTerminal(true); },
   deposit() {
@@ -1569,7 +1599,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel'];
 
 /* ── sauvegarde ── */
 let saveInFlight = false;
