@@ -16,6 +16,13 @@ const ADMIN_NAME = (process.env.ADMIN_NAME || '').trim();
 const VERSION = 11;
 const SESSION_TTL = 30 * 86400 * 1000; // 30 jours
 const MAX_TRANSFER = 1e9;
+const TERMS_VERSION = '2025-09-01';
+const INACTIVE_DELETE_MS = 5 * 86400 * 1000; // compte inactif 5 j -> suppression
+const STRIPE_SK = process.env.STRIPE_SECRET_KEY || '';
+const STRIPE_WS = process.env.STRIPE_WEBHOOK_SECRET || '';
+const RATE_MULT = parseFloat(process.env.RATE_MULT || '1');
+const PACKS = { p1: 5000, p2: 12000, p3: 35000, p4: 80000 };
+const PACK_CENTS = { p1: 499, p2: 999, p3: 2499, p4: 4999 };
 
 const UP_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
@@ -54,6 +61,7 @@ function migrate(d) {
     if (!s[t] || typeof s[t] !== 'object' || !s[t].name || Date.now() - (s[t].at || 0) > SESSION_TTL) delete s[t];
   }
   d.sessions = s;
+  for (const u of Object.keys(d.users)) if (!d.users[u].lastActive) d.users[u].lastActive = d.users[u].created || Date.now();
   return d;
 }
 
@@ -95,6 +103,7 @@ setInterval(() => {
   for (const k in PRESENCE) { if (now - PRESENCE[k] > 120000) delete PRESENCE[k]; }
   for (const t in DB.sessions) { if (now - (DB.sessions[t].at || 0) > SESSION_TTL) delete DB.sessions[t]; }
 }, 30000);
+setInterval(purgeInactive, 30 * 60 * 1000);
 process.on('SIGTERM', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
 process.on('SIGINT', async () => { try { await persistNow(); } catch (e) {} process.exit(0); });
 
@@ -105,6 +114,90 @@ const safeEqual = (a, b) => {
 };
 const validMail = m => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(m || '');
 const isAdminUser = n => !!ADMIN_NAME && n === ADMIN_NAME;
+/* mot de passe fort : 8+ caracteres, minuscule, majuscule, chiffre */
+function passPolicy(p) {
+  p = String(p || '');
+  if (p.length < 8) return 'Mot de passe : 8 caractères minimum.';
+  if (!/[a-z]/.test(p)) return 'Mot de passe : au moins une minuscule.';
+  if (!/[A-Z]/.test(p)) return 'Mot de passe : au moins une majuscule.';
+  if (!/[0-9]/.test(p)) return 'Mot de passe : au moins un chiffre.';
+  if (p.length > 128) return 'Mot de passe : 128 caractères maximum.';
+  return null;
+}
+/* en-tetes de securite sur TOUTES les reponses */
+const SEC_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin'
+};
+/* rate limiting par IP (glissant 60 s) + verrou anti brute-force */
+const RL = {};
+const LOCK = {};
+function rateOk(ip, cls, max) {
+  const lim = Math.max(1, Math.round(max * RATE_MULT));
+  const k = ip + '|' + cls;
+  const now = Date.now();
+  const e = RL[k] || (RL[k] = { n: 0, t: now });
+  if (now - e.t > 60000) { e.n = 0; e.t = now; }
+  e.n++;
+  return e.n <= lim;
+}
+function locked(ip, user) {
+  const e = LOCK[ip + '|' + String(user).toLowerCase()];
+  return !!(e && e.until && Date.now() < e.until);
+}
+function failAuth(ip, user) {
+  const k = ip + '|' + String(user).toLowerCase();
+  const e = LOCK[k] || (LOCK[k] = { fails: 0, until: 0 });
+  e.fails++;
+  if (e.fails >= 8) { e.until = Date.now() + 15 * 60 * 1000; e.fails = 0; }
+}
+function okAuth(ip, user) { delete LOCK[ip + '|' + String(user).toLowerCase()]; }
+setInterval(() => {
+  const now = Date.now();
+  for (const k in RL) if (now - RL[k].t > 120000) delete RL[k];
+  for (const k in LOCK) if (LOCK[k].until && now - LOCK[k].until > 20 * 60 * 1000) delete LOCK[k];
+}, 60000);
+const clientIp = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+/* validation sanitaire d'une sauvegarde entrante */
+function saveSane(st) {
+  if (!st || typeof st !== 'object' || Array.isArray(st)) return false;
+  const fin = (v, lo, hi) => typeof v === 'number' && isFinite(v) && v >= lo && v <= hi;
+  if ('cash' in st && !fin(st.cash, -1e12, 1e12)) return false;
+  if ('xp' in st && !fin(st.xp, 0, 1e9)) return false;
+  if (st.bank && typeof st.bank === 'object') {
+    if (!fin(st.bank.compte == null ? 0 : st.bank.compte, -1e12, 1e12)) return false;
+    if (!fin(st.bank.livret == null ? 0 : st.bank.livret, 0, 22950)) return false;
+    if (Array.isArray(st.bank.loans) && st.bank.loans.length > 6) return false;
+  }
+  if (Array.isArray(st.jobs) && st.jobs.length > 4) return false;
+  if (Array.isArray(st.biz) && st.biz.length > 8) return false;
+  if (Array.isArray(st.houses) && st.houses.length > 12) return false;
+  if (Array.isArray(st.cars) && st.cars.length > 8) return false;
+  if (Array.isArray(st.journal) && st.journal.length > 100) return false;
+  if (Array.isArray(st.histBal) && st.histBal.length > 120) return false;
+  if (typeof st.name === 'string' && st.name.length > 20) return false;
+  return true;
+}
+/* purge des comptes inactifs (5 jours) */
+function purgeInactive() {
+  const now = Date.now();
+  let n = 0;
+  for (const u of Object.keys(DB.users)) {
+    const last = DB.users[u].lastActive || DB.users[u].created || 0;
+    if (now - last > INACTIVE_DELETE_MS) {
+      delete DB.users[u]; delete DB.saves[u]; delete DB.mailbox[u];
+      delete DB.holds[u]; delete DB.announceCd[u]; delete PRESENCE[u];
+      for (const t in DB.sessions) if (DB.sessions[t].name === u) delete DB.sessions[t];
+      n++;
+    }
+  }
+  if (n) { console.log('[SEC] purge inactivité : ' + n + ' compte(s) supprimé(s)'); persist(); }
+}
 
 function readBody(req) {
   return new Promise((res) => {
@@ -119,9 +212,19 @@ function readBody(req) {
   });
 }
 function json(res, code, obj) {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.writeHead(code, Object.assign({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, SEC_HEADERS));
   res.end(JSON.stringify(obj));
 }
+function readRaw(req) {
+  return new Promise(res => {
+    let d = '';
+    let done = false;
+    req.on('data', c => { d += c; if (d.length > 1e6 && !done) { done = true; try { req.destroy(); } catch (e) {} res(d); } });
+    req.on('end', () => { if (!done) res(d); });
+    req.on('error', () => { if (!done) { done = true; res(d); } });
+  });
+}
+function touchUser(name) { if (DB.users[name]) DB.users[name].lastActive = Date.now(); }
 function authUser(req, query) {
   let token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
   if (!token && query && query.token) token = String(query.token); // sendBeacon (pas d'en-têtes)
@@ -172,17 +275,78 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.startsWith('/api/')) {
       if (!API_ENABLED) return json(res, 404, { ok: false, err: 'API désactivée.' });
+      const ip = clientIp(req);
+      /* webhook Stripe : payload brut + verification de signature */
+      if (url === '/api/stripe/webhook' && req.method === 'POST') {
+        if (!STRIPE_WS || !STRIPE_SK) return json(res, 400, { err: 'Stripe non configuré.' });
+        if (!rateOk(ip, 'webhook', 60)) return json(res, 429, { err: 'Trop de requêtes.' });
+        const raw = await readRaw(req);
+        const m = /t=(\d+),v1=([a-f0-9]+)/.exec(req.headers['stripe-signature'] || '');
+        if (!m) return json(res, 400, { err: 'Signature manquante.' });
+        if (Math.abs(Date.now() / 1000 - (+m[1])) > 300) return json(res, 400, { err: 'Signature expirée.' });
+        const expect = crypto.createHmac('sha256', STRIPE_WS).update(m[1] + '.' + raw).digest('hex');
+        if (!safeEqual(expect, m[2])) return json(res, 400, { err: 'Signature invalide.' });
+        let ev = {}; try { ev = JSON.parse(raw); } catch (e) { return json(res, 400, { err: 'Payload invalide.' }); }
+        if (ev.type === 'checkout.session.completed') {
+          const sess = (ev.data && ev.data.object) || {};
+          const user = sess.client_reference_id || (sess.metadata || {}).user;
+          const pack = (sess.metadata || {}).pack;
+          if (user && DB.users[user] && PACKS[pack]) {
+            DB.mailbox[user] = DB.mailbox[user] || [];
+            if (DB.mailbox[user].length < 200) {
+              DB.mailbox[user].push({ id: rid(), type: 'packCredit', amount: PACKS[pack], pack, at: Date.now() });
+              persist();
+              console.log('[STRIPE] pack ' + pack + ' crédité à ' + user);
+            }
+          }
+        }
+        return json(res, 200, { received: true });
+      }
       const body = (req.method === 'POST') ? await readBody(req) : {};
       if (body && body.__tooBig) return json(res, 413, { err: 'Charge trop volumineuse.' });
+      if (!rateOk(ip, 'api', 600)) return json(res, 429, { err: 'Trop de requêtes, ralentissez.' });
 
       if (url === '/api/health')
-        return json(res, 200, { ok: true, v: VERSION, mode: USE_UPSTASH ? 'upstash' : 'fichier', users: Object.keys(DB.users).length, uptime: Math.round(process.uptime()) });
+        return json(res, 200, { ok: true, v: VERSION, mode: USE_UPSTASH ? 'upstash' : 'fichier', users: Object.keys(DB.users).length, uptime: Math.round(process.uptime()), stripe: !!STRIPE_SK, terms: TERMS_VERSION });
+
+      if (url === '/api/terms') return json(res, 200, { ok: true, version: TERMS_VERSION });
+      if (url === '/api/checkout' && req.method === 'POST') {
+        const a = authUser(req, query);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        if (!rateOk(ip, 'checkout', 6)) return json(res, 429, { err: 'Trop de sessions de paiement.' });
+        if (!STRIPE_SK) return json(res, 400, { err: 'Paiement Stripe non configuré : utilisez la confirmation manuelle.' });
+        const pack = String(body.pack || '');
+        if (!PACKS[pack]) return json(res, 400, { err: 'Pack inconnu.' });
+        const origin = (req.headers.origin || ('https://' + (req.headers.host || 'localhost')));
+        const params = new URLSearchParams();
+        params.set('mode', 'payment');
+        params.set('client_reference_id', a.name);
+        params.set('metadata[user]', a.name);
+        params.set('metadata[pack]', pack);
+        params.set('success_url', origin + '/?pack=' + pack);
+        params.set('cancel_url', origin + '/?pack=cancel');
+        params.set('line_items[0][quantity]', '1');
+        params.set('line_items[0][price_data][currency]', 'eur');
+        params.set('line_items[0][price_data][unit_amount]', String(PACK_CENTS[pack]));
+        params.set('line_items[0][price_data][product_data][name]', 'Pack HEXALIFE ' + pack);
+        try {
+          const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + STRIPE_SK, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.url) return json(res, 400, { err: (j.error && j.error.message) || 'Stripe : session impossible.' });
+          return json(res, 200, { ok: true, url: j.url });
+        } catch (e) { return json(res, 400, { err: 'Stripe injoignable.' }); }
+      }
 
       /* ── Présence ── */
       if (url === '/api/ping' && req.method === 'POST') {
         const a = authUser(req, query);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
         PRESENCE[a.name] = Date.now();
+        touchUser(a.name);
         const snap = presenceSnapshot();
         snap.isAdmin = isAdminUser(a.name);
         return json(res, 200, snap);
@@ -194,15 +358,19 @@ const server = http.createServer(async (req, res) => {
         const u = String(body.user || '').trim();
         const email = String(body.email || '').toLowerCase();
         const pass = String(body.pass || '');
+        if (!rateOk(ip, 'auth', 12)) return json(res, 429, { err: 'Trop de tentatives, réessayez dans une minute.' });
         if (u.length < 3 || u.length > 20) return json(res, 400, { err: 'Pseudo : 3 à 20 caractères.' });
         if (!/^[a-zA-Z0-9_\-]+$/.test(u)) return json(res, 400, { err: 'Pseudo : lettres, chiffres, tirets uniquement.' });
         if (!validMail(email)) return json(res, 400, { err: 'Adresse e-mail invalide.' });
-        if (pass.length < 4 || pass.length > 200) return json(res, 400, { err: 'Mot de passe : 4 caractères minimum.' });
+        const pp = passPolicy(pass);
+        if (pp) return json(res, 400, { err: pp });
+        if (body.acceptCgu !== true) return json(res, 400, { err: 'Vous devez accepter les conditions d’utilisation.' });
+        if (body.termsVersion !== TERMS_VERSION) return json(res, 400, { err: 'Version des CGU obsolète : rechargez la page.' });
         if (DB.users[u]) return json(res, 400, { err: 'Ce compte existe déjà.' });
         if (Object.values(DB.users).some(x => x.email === email)) return json(res, 400, { err: 'Cet e-mail est déjà utilisé.' });
         const salt = crypto.randomBytes(8).toString('hex');
-        DB.users[u] = { email, salt, hash: hashPass(pass, salt), created: Date.now() };
-        const token = crypto.randomBytes(16).toString('hex');
+        DB.users[u] = { email, salt, hash: hashPass(pass, salt), created: Date.now(), lastActive: Date.now(), cgu: { v: TERMS_VERSION, at: Date.now() } };
+        const token = crypto.randomBytes(24).toString('hex');
         DB.sessions[token] = { name: u, at: Date.now() };
         persist();
         return json(res, 200, { ok: true, token, name: u });
@@ -210,16 +378,20 @@ const server = http.createServer(async (req, res) => {
       if (url === '/api/login' && req.method === 'POST') {
         const id = String(body.user || '').trim().toLowerCase();
         const pass = String(body.pass || '');
+        if (!rateOk(ip, 'auth', 12)) return json(res, 429, { err: 'Trop de tentatives, réessayez dans une minute.' });
         if (!id || !pass) return json(res, 400, { err: 'Identifiants requis.' });
+        if (locked(ip, id)) return json(res, 429, { err: 'Trop de tentatives : compte verrouillé 15 min.' });
         const name = Object.keys(DB.users).find(k => k.toLowerCase() === id || DB.users[k].email === id);
-        if (!name) return json(res, 400, { err: 'Identifiants incorrects.' });
+        if (!name) { failAuth(ip, id); return json(res, 400, { err: 'Identifiants incorrects.' }); }
         const rec = DB.users[name];
         let ok = false;
         try { ok = safeEqual(hashPass(pass, rec.salt), rec.hash); } catch (e) { ok = false; }
-        if (!ok) return json(res, 400, { err: 'Identifiants incorrects.' });
-        const token = crypto.randomBytes(16).toString('hex');
+        if (!ok) { failAuth(ip, id); return json(res, 400, { err: 'Identifiants incorrects.' }); }
+        okAuth(ip, id);
+        const token = crypto.randomBytes(24).toString('hex');
         DB.sessions[token] = { name, at: Date.now() };
         PRESENCE[name] = Date.now();
+        touchUser(name);
         persist();
         return json(res, 200, { ok: true, token, name });
       }
@@ -235,13 +407,16 @@ const server = http.createServer(async (req, res) => {
       if (url === '/api/load') {
         const a = authUser(req, query);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
+        touchUser(a.name);
         return json(res, 200, { state: DB.saves[a.name] || null });
       }
       if (url === '/api/save' && req.method === 'POST') {
         const a = authUser(req, query); // token accepté en query pour navigator.sendBeacon
         if (!a) return json(res, 401, { err: 'Non connecté.' });
-        if (!body.state || typeof body.state !== 'object') return json(res, 400, { err: 'État invalide.' });
+        if (!rateOk(ip, 'save', 120)) return json(res, 429, { err: 'Sauvegardes trop rapprochées.' });
+        if (!body.state || typeof body.state !== 'object' || !saveSane(body.state)) return json(res, 400, { err: 'Sauvegarde invalide ou hors limites.' });
         DB.saves[a.name] = body.state;
+        touchUser(a.name);
         persist();
         return json(res, 200, { ok: true });
       }
@@ -258,6 +433,7 @@ const server = http.createServer(async (req, res) => {
       if (url === '/api/transfer' && req.method === 'POST') {
         const a = authUser(req, query);
         if (!a) return json(res, 401, { err: 'Non connecté.' });
+        if (!rateOk(ip, 'transfer', 10)) return json(res, 429, { err: 'Transferts trop rapprochés.' });
         const to = findUser(body.to);
         const amount = Math.floor(+body.amount || 0);
         if (!to) return json(res, 400, { err: 'Joueur introuvable.' });
@@ -398,6 +574,7 @@ const server = http.createServer(async (req, res) => {
       if (url === '/api/admin/action' && req.method === 'POST') {
         const a = authUser(req, query);
         if (!a || !isAdminUser(a.name)) return json(res, 403, { err: 'Accès refusé.' });
+        if (!rateOk(ip, 'admin', 30)) return json(res, 429, { err: 'Trop d’actions admin.' });
         const target = findUser(body.target);
         const action = String(body.action || '');
         const amount = Math.floor(+body.amount || 0);
@@ -448,11 +625,10 @@ const server = http.createServer(async (req, res) => {
         return res.end('404 — introuvable');
       }
     } catch (e) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('404'); }
-    res.writeHead(200, {
+    res.writeHead(200, Object.assign({
       'Content-Type': MIME[path.extname(p).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff'
-    });
+      'Cache-Control': 'no-store'
+    }, SEC_HEADERS));
     fs.createReadStream(p).pipe(res);
   } catch (e) {
     console.error('[HTTP]', e);
@@ -467,5 +643,7 @@ const server = http.createServer(async (req, res) => {
     console.log('HEXALIFE v' + VERSION + ' → http://' + HOST + ':' + PORT);
     console.log('Backend base : ' + (USE_UPSTASH ? 'Upstash Redis (persistant)' : 'fichier (' + DB_FILE + ')'));
     console.log('Admin : ' + (ADMIN_NAME ? ADMIN_NAME : 'aucun (définir ADMIN_NAME)'));
+    console.log('Stripe : ' + (STRIPE_SK ? 'activé (détection automatique des paiements)' : 'non configuré (confirmation manuelle)'));
+    purgeInactive();
   });
 })();

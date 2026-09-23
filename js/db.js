@@ -8,6 +8,8 @@
 const DB = (() => {
   const UK = 'hl_users', SK = 'hl_session', TK = 'hl_token', TKU = 'hl_token_user';
   let mode = 'local';
+  let stripeOn = false;
+  let termsV = null;
   let token = localStorage.getItem(TK);
 
   const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return 'x' + h.toString(36); };
@@ -39,6 +41,8 @@ const DB = (() => {
 
   return {
     mode: () => mode,
+    hasStripe: () => stripeOn && mode === 'api',
+    termsVersion: () => termsV,
     label: () => mode === 'api' ? 'Base : serveur hexalife.db (partagée)' : 'Base : locale navigateur',
     authFetch: (path, opts) => api(path, opts).catch(e => ({ ok: false, err: 'Serveur injoignable.' })),
 
@@ -46,6 +50,8 @@ const DB = (() => {
       try {
         const j = await api('/api/health', {}, 3000);
         mode = (j && j.ok) ? 'api' : 'local';
+        stripeOn = !!(j && j.stripe);
+        termsV = (j && j.terms) || null;
         if (mode === 'api' && token) {
           try { const me = await api('/api/me', {}, 3000); if (!me.ok) { token = null; localStorage.removeItem(TK); } }
           catch (e) { /* réseau lent : on garde le token, /api/me tranchera plus tard */ }
@@ -61,7 +67,7 @@ const DB = (() => {
       if (!validMail(email)) return { err: 'Adresse e-mail invalide.' };
       if ((p || '').length < 4) return { err: 'Mot de passe : 4 caractères minimum.' };
       if (mode === 'api') {
-        const j = await safeApi('/api/register', { method: 'POST', body: JSON.stringify({ user: u, email, pass: p }) });
+        const j = await safeApi('/api/register', { method: 'POST', body: JSON.stringify({ user: u, email, pass: p, acceptCgu: true, termsVersion: termsV }) });
         if (j.err || !j.token) return { err: j.err || 'Inscription impossible.' };
         token = j.token; localStorage.setItem(TK, token); localStorage.setItem(TKU, j.name); localStorage.setItem(SK, j.name);
         return { ok: true };

@@ -12,6 +12,31 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### 🛡 v11.4 — sécurité, inscription renforcée, intro cinématique, Stripe auto
+- **Bug corrigé** : les soldes animés (compte courant / Livret A) *débordaient* de leur case
+  (animation scale) → flash couleur/halo sans transform, contenu clipé proprement.
+- **Sécurité serveur durcie** : en-têtes CSP / X-Frame-Options / nosniff / COOP / COOP sur
+  toutes les réponses ; rate-limiting par IP (auth, transferts, saves, admin, webhooks) ;
+  verrou anti brute-force (8 échecs = 15 min) ; sessions 24 octets, plafonnées à 5/compte ;
+  validation sanitaire des saves entrantes (bornes cash/xp/livret, tailles de listes) ;
+  tokens de session rotatifs ; purge automatique des comptes **inactifs 5 jours**.
+- **Inscription renforcée** : mot de passe **8 caractères min. avec majuscule, minuscule et
+  chiffre** (politique serveur + jauge de force client), case **CGU obligatoire**, page
+  `/cgu.html` dédiée (version datée, acceptation horodatée stockée), œil afficher/masquer.
+- **Intro entièrement refaite** : ciel en phases (nuit → aube), étoiles scintillantes,
+  soleil levant, immeubles qui poussent, lampadaires qui s'allument en cascade, voitures à
+  phares, logo lettre par lettre avec shine, tagline tapée au clavier, barre de chargement
+  à étincelle, et **wipe doré** à l'entrée en ville.
+- **Boutique : détection automatique du paiement** — si `STRIPE_SECRET_KEY` +
+  `STRIPE_WEBHOOK_SECRET` sont configurés : session Checkout créée côté serveur, webhook
+  **signé (HMAC)** vérifié, crédit du pack automatique via mailbox (plus besoin de
+  « J'ai payé »). Sans clés : repli manuel conservé.
+- **Aucune limitation du nombre de sessions/comptes** : connectez-vous depuis autant
+  d'appareils que vous voulez (testé : 7 sessions simultanées toutes valides).
+- Tests : 82 assertions serveur (webhook signé/invalide, rate-limit 429, CGU, sanity saves,
+  sessions illimitées, purge inactifs), smoke (packCredit), navigateur (inscription forte +
+  CGU, intro, NFC…).
+
 ### ✨ v11.3 — paiement sans contact, tutoriel complet, courbes pro, soldes vivants
 - **Paiement sans contact (NFC) sur les gros achats** (formations, voitures, biens,
   créations d'entreprise — pas les courses) : un lecteur apparaît, et **c'est vous qui

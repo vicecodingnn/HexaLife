@@ -60,7 +60,10 @@ const DB_KEY = 'hexalife:db';
 const salt = crypto.randomBytes(8).toString('hex');
 const hash = crypto.scryptSync('ancienpass', salt, 32).toString('hex');
 const legacyDB = {
-  users: { VieuxPote: { email: 'vieux@pote.fr', salt, hash, created: Date.now() - 9e8 } },
+  users: {
+    VieuxPote: { email: 'vieux@pote.fr', salt, hash, created: Date.now() - 9e8, lastActive: Date.now() - 86400e3 },
+    Fantome: { email: 'f@f.fr', salt, hash, created: Date.now() - 9e8, lastActive: Date.now() - 6 * 86400e3 },
+  },
   sessions: { 'token-legacy-123': 'VieuxPote' },          // ancien format : chaîne
   saves: {
     VieuxPote: {                                          // ancienne save v10
@@ -100,7 +103,11 @@ console.log('▶ HEXALIFE — tests Upstash / Render / migration legacy');
 ok(!!health && health.ok === true, 'serveur démarré');
 ok(health && health.mode === 'upstash', 'mode = upstash détecté (reçu : ' + (health && health.mode) + ')');
 
-/* ── login sur un compte legacy ── */
+/* ── purge inactivité : le compte inactif 6 j est supprimé au démarrage ── */
+const ghost = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Fantome', pass: 'ancienpass' }) });
+ok(ghost.status === 400, 'compte inactif depuis 6 j : purgé automatiquement (login impossible)');
+
+/* ── login sur un compte legacy (actif) ── */
 const login = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'VieuxPote', pass: 'ancienpass' }) });
 ok(login.status === 200 && login.body.token, 'login compte legacy ok');
 const tk = login.body.token;

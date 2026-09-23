@@ -80,8 +80,9 @@ try {
   await sleep(400);
   await page.fill('#rg_user', 'MarieTest');
   await page.fill('#rg_mail', 'marie@test.fr');
-  await page.fill('#rg_pass', 'test1234');
-  await page.fill('#rg_pass2', 'test1234');
+  await page.fill('#rg_pass', 'Test1234!');
+  await page.fill('#rg_pass2', 'Test1234!');
+  await page.check('#rg_cgu');
   await shot('04-auth-inscription');
   await page.click('#rg_btn');
   await page.waitForFunction(() => document.getElementById('scr-app').classList.contains('active'), { timeout: 10000 });
@@ -294,8 +295,9 @@ try {
   await mob.click('.atab[data-t="reg"]');
   await mob.fill('#rg_user', 'MobTest');
   await mob.fill('#rg_mail', 'mob@test.fr');
-  await mob.fill('#rg_pass', 'test1234');
-  await mob.fill('#rg_pass2', 'test1234');
+  await mob.fill('#rg_pass', 'Test1234!');
+  await mob.fill('#rg_pass2', 'Test1234!');
+  await mob.check('#rg_cgu');
   await mob.click('#rg_btn');
   await mob.waitForFunction(() => document.getElementById('scr-app').classList.contains('active'), { timeout: 10000 }).catch(() => {});
   await sleep(1200);

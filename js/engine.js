@@ -95,6 +95,15 @@ function applyOp(op) {
       pay(amt, 'Transfert envoyé à ' + (op.to || '?'), 'out');
       UI.toast('Transfert de ' + eur(amt) + ' à ' + esc(op.to || '?') + ' confirmé', '');
     }
+    else if (op.type === 'packCredit') {
+      const pk = DATA.packs.find(x => x.id === op.pack);
+      G.pendingPack = null;
+      receive(num(op.amount, 0, 0, 1e9), 'Pack Stripe — ' + (pk ? pk.n : op.pack), 'in');
+      G.stats.premium = num(G.stats.premium, 0) + num(op.amount, 0, 0, 1e9);
+      UI.cardFx('Paiement Stripe confirmé', '+' + eur0(op.amount));
+      UI.confetti(); FX.sound('win');
+      UI.toast('💎 Paiement détecté automatiquement : +' + eur0(op.amount) + ' crédités !', 'good');
+    }
     else if (op.type === 'adminCredit') { receive(num(op.amount, 0, 0, 1e12), 'Bonus administrateur', 'in'); UI.confetti(); FX.sound('win'); UI.toast('🎁 Bonus admin +' + eur(op.amount), 'good'); }
     else if (op.type === 'adminDebit') { pay(num(op.amount, 0, 0, 1e12), 'Malus administrateur', 'out'); FX.sound('error'); UI.toast('⚠ Malus admin −' + eur(op.amount), 'bad'); }
     else if (op.type === 'deleteBiz') { G.biz = []; T.selBiz = -1; FX.sound('error'); UI.toast('🏚 Vos entreprises ont été supprimées par un admin', 'bad'); }
@@ -1540,6 +1549,18 @@ const A = {
 
   buyPack(d) {
     const p = DATA.packs.find(x => x.id === d.id); if (!p) return;
+    if (DB.hasStripe && DB.hasStripe()) {
+      UI.toast('⏳ Ouverture de la session de paiement sécurisée…', '');
+      DB.authFetch('/api/checkout', { method: 'POST', body: JSON.stringify({ pack: p.id }) }).then(j => {
+        if (j && j.ok && j.url) {
+          G.pendingPack = p.id;
+          window.open(j.url, '_blank', 'noopener');
+          UI.toast('🧾 Payez dans l’onglet Stripe : la récompense sera créditée AUTOMATIQUEMENT dès confirmation.', 'good');
+          refresh();
+        } else { FX.sound('error'); UI.toast((j && j.err) || 'Stripe indisponible.', 'bad'); }
+      }).catch(() => { FX.sound('error'); UI.toast('Stripe injoignable.', 'bad'); });
+      return;
+    }
     G.pendingPack = p.id;
     window.open(p.stripe, '_blank', 'noopener');
     UI.toast('Paiement Stripe ouvert. Cliquez « J’ai payé » une fois réglé.', 'good'); refresh();

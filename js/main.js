@@ -20,7 +20,26 @@
   makeCity(el('authSky'), 30, 20, 110);
   makeCity(el('appSky'), 34, 30, 140);
 
-  /* ── intro : le chargement FAIT avancer le marcheur et la ville ── */
+  /* ── INTRO CINÉMATIQUE v11.4 : étoiles, lampadaires, logo lettre par lettre, phases ── */
+  (function buildIntro() {
+    const stars = el('inStars');
+    if (stars) {
+      let h = '';
+      for (let i = 0; i < 70; i++) h += '<i style="left:' + (Math.random() * 100).toFixed(1) + '%;top:' + (Math.random() * 100).toFixed(1) + '%;animation-delay:' + (Math.random() * 3.4).toFixed(2) + 's;transform:scale(' + (0.6 + Math.random()).toFixed(2) + ')"></i>';
+      stars.innerHTML = h;
+    }
+    const lamps = el('inLamps');
+    if (lamps) {
+      let h = '';
+      for (let i = 0; i < 8; i++) h += '<i style="left:' + (6 + i * 12.5) + '%"></i>';
+      lamps.innerHTML = h;
+    }
+    const logo = el('inLogo');
+    if (logo) logo.innerHTML = 'HEXALIFE'.split('').map((ch, i) => '<span class="' + (i >= 4 ? 'gd' : '') + '" style="--i:' + i + '">' + ch + '</span>').join('');
+  })();
+  const TAG = 'Simulateur de vie · Économie française · Temps réel';
+  let tagIdx = 0, tagTimer = 0;
+
   const STEPS = [
     [0,  'Connexion à la base de données…'],
     [18, 'Génération des 800 citoyens…'],
@@ -31,24 +50,37 @@
   ];
   let prog = 0, dbReady = false, introDone = false;
 
-  // DB.init() a son propre timeout : la promesse aboutit toujours,
-  // l'intro ne peut plus rester bloquée.
   DB.init().then(() => { dbReady = true; }).catch(() => { dbReady = true; });
   setTimeout(() => { dbReady = true; }, 4000); // garde-fou ultime
 
+  const intro = el('scr-intro');
   const loadTimer = setInterval(() => {
     if (!dbReady && prog > 14) prog = 14;           /* attend la détection de la base */
     else prog = Math.min(100, prog + 1.2 + Math.random() * 3.2);
     el('loadFill').style.width = prog + '%';
     el('loadPct').textContent = Math.floor(prog) + '%';
+    const spark = document.querySelector('.in-load-spark');
+    if (spark) spark.style.left = 'calc(' + prog + '% - 6px)';
     /* le marcheur et la ville avancent avec le chargement */
     el('walker').style.left = (8 + prog * 0.72) + '%';
     el('cityNear').style.transform = 'translateX(' + (-prog * 4) + 'px)';
     el('cityFar').style.transform = 'translateX(' + (-prog * 1.6) + 'px)';
-    el('introDawn').style.opacity = (prog / 100) * 0.9;
-    let cur = 0; STEPS.forEach((s, i) => { if (prog >= s[0]) cur = i; });
-    el('loadSteps').innerHTML = STEPS.map((s, i) =>
-      '<div class="' + (i < cur ? 'ok' : i === cur ? 'cur' : '') + '">' + (i < cur ? '✓' : i === cur ? '▶' : '·') + ' ' + s[1] + '</div>').join('');
+    /* phases cinématiques */
+    if (prog >= 6) intro.classList.add('p1');
+    if (prog >= 28) intro.classList.add('p2');
+    if (prog >= 55) intro.classList.add('p3');
+    if (prog >= 78 && !tagTimer) {
+      intro.classList.add('p4');
+      tagTimer = setInterval(() => {
+        tagIdx = Math.min(TAG.length, tagIdx + 1);
+        const t = el('inTag'); if (!t) return;
+        t.textContent = TAG.slice(0, tagIdx);
+        if (tagIdx >= TAG.length) { clearInterval(tagTimer); t.classList.add('done'); }
+      }, 34);
+    }
+    let cur = 0; STEPS.forEach((st, i) => { if (prog >= st[0]) cur = i; });
+    el('loadSteps').innerHTML = STEPS.map((st, i) =>
+      '<div class="' + (i < cur ? 'ok' : i === cur ? 'cur' : '') + '">' + (i < cur ? '✓' : i === cur ? '▶' : '·') + ' ' + st[1] + '</div>').join('');
     if (prog >= 100 && !introDone) {
       introDone = true;
       clearInterval(loadTimer);
@@ -60,8 +92,12 @@
   }, 120);
 
   el('btnStart').addEventListener('click', () => {
-    if (DB.session()) enterGame(DB.session(), false);
-    else show('scr-auth');
+    intro.classList.add('leave');
+    FX.sound('win');
+    setTimeout(() => {
+      if (DB.session()) enterGame(DB.session(), false);
+      else show('scr-auth');
+    }, 480);
   });
 
   function show(id) {
@@ -87,9 +123,47 @@
     } finally { submitBtn(btn, false); }
   });
 
+  /* solidité du mot de passe + œil + CGU */
+  const pwScore = v => {
+    let sc = 0;
+    if (v.length >= 8) sc++;
+    if (/[a-z]/.test(v)) sc++;
+    if (/[A-Z]/.test(v)) sc++;
+    if (/[0-9]/.test(v)) sc++;
+    if (/[^a-zA-Z0-9]/.test(v) && v.length >= 10) sc++;
+    return sc;
+  };
+  const pwUpdate = () => {
+    const v = el('rg_pass').value;
+    const lvl = v ? pwScore(v) : 0;
+    const bar = el('pwBar'), hint = el('pwHint');
+    if (!bar || !hint) return;
+    bar.style.width = (lvl * 20) + '%';
+    bar.className = ['zero', 'weak', 'weak', 'mid', 'ok', 'strong'][lvl];
+    hint.textContent = 'Force : ' + ['—', 'très faible', 'faible', 'moyenne', 'bonne', 'excellente'][lvl];
+    hint.className = 'pw-hint ' + bar.className;
+  };
+  el('rg_pass').addEventListener('input', pwUpdate);
+  const eye = el('eyePass');
+  if (eye) eye.addEventListener('click', () => {
+    const i = el('rg_pass');
+    i.type = i.type === 'password' ? 'text' : 'password';
+    i.focus();
+  });
+
   el('formReg').addEventListener('submit', async e => {
     e.preventDefault();
     const btn = el('rg_btn'), m = el('regMsg');
+    if (!el('rg_cgu').checked) {
+      m.textContent = 'Vous devez accepter les conditions d’utilisation.'; m.classList.remove('ok');
+      m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg');
+      return;
+    }
+    if (pwScore(el('rg_pass').value) < 4) {
+      m.textContent = 'Mot de passe trop faible : 8 caractères min. avec majuscule, minuscule et chiffre.'; m.classList.remove('ok');
+      m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg');
+      return;
+    }
     if (el('rg_pass').value !== el('rg_pass2').value) {
       m.textContent = 'Les mots de passe ne correspondent pas.'; m.classList.remove('ok');
       m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg');

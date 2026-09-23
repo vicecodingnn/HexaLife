@@ -235,6 +235,13 @@ run('régressions v11.1', `
     if (pool.length) throw new Error('amende stationnement proposée sans voiture');
   }
 
+  // 8bis) pack crédité automatiquement via webhook Stripe (mailbox)
+  const bal0 = balance();
+  G.pendingPack = 'p1';
+  applyOp({ type: 'packCredit', amount: 5000, pack: 'p1' });
+  if (Math.abs(balance() - (bal0 + 5000)) > 0.01) throw new Error('packCredit non crédité');
+  if (G.pendingPack !== null) throw new Error('pendingPack non purgé');
+
   // 9) nettoyage : les sections suivantes repartent d'un état déterministe
   G.jobs = []; G.biz = []; G.inv = {};
   G.bank = { bankId:null, bankName:null, playerRate:null, compte:0, livret:0, loans:[] };

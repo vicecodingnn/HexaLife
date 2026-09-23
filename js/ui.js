@@ -1558,7 +1558,7 @@ const UI = (() => {
 
   function rPlus() {
     const pending = G.pendingPack ? DATA.packs.find(p => p.id === G.pendingPack) : null;
-    return '<h1>Boutique +</h1><div class="sub">Packs d’euros via Stripe (liens de démonstration — mode test).</div>' +
+    return '<h1>Boutique +</h1><div class="sub">' + (DB.hasStripe && DB.hasStripe() ? 'Paiement Stripe sécurisé : la récompense est créditée <b class="pos">automatiquement</b> dès confirmation du paiement (webhook signé).' : 'Paiement Stripe (mode test) : confirmation manuelle via « J’ai payé ».') + '</div>' +
       (pending ? '<div class="panel pending-pack"><h2>⏳ Paiement en attente</h2><p class="m-desc">Pack « ' + esc(pending.n) + ' » (' + pending.price + ') réglé via Stripe ?</p>' +
         '<div class="btn-row"><button class="btn btn-primary" data-act="confirmPack">Oui, j’ai payé</button><button class="btn btn-ghost" data-act="cancelPack">Annuler</button></div></div>' : '') +
       '<div class="pack-grid">' + DATA.packs.map((p, k) =>

@@ -38,7 +38,7 @@ async function j(url, opts = {}, token) {
 }
 
 const srv = spawn(process.execPath, [path.join(ROOT, 'server/server.js')], {
-  env: { ...process.env, PORT: String(PORT), DB_PATH: TMPDB, ADMIN_NAME: 'AdminTest' },
+  env: { ...process.env, PORT: String(PORT), DB_PATH: TMPDB, ADMIN_NAME: 'AdminTest', RATE_MULT: '100', STRIPE_SECRET_KEY: 'sk_test_fake', STRIPE_WEBHOOK_SECRET: 'whsec_fake' },
   stdio: 'ignore',
 });
 const quit = code => { try { srv.kill('SIGKILL'); } catch (e) {} try { fs.rmSync(TMPDB, { recursive: true, force: true }); } catch (e) {} process.exit(code); };
@@ -80,38 +80,44 @@ console.log('▶ HEXALIFE — tests serveur');
 
 /* ── comptes ── */
 let tA = null, tB = null, tAdmin = null;
+const TERMS = (await j('/api/terms')).body.version;
+ok(!!TERMS, 'endpoint /api/terms expose une version');
 {
-  const r1 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'ab', email: 'x@x.fr', pass: 'abcd' }) });
+  const r1 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'ab', email: 'x@x.fr', pass: 'Abcd1234!' }) });
   ok(r1.status === 400 && !!r1.body.err, 'register : pseudo trop court refusé');
 
-  const r2 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'invalide', pass: 'abcd' }) });
+  const r2 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'invalide', pass: 'Abcd1234!' }) });
   ok(r2.status === 400, 'register : email invalide refusé');
 
-  const r3 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'a@a.fr', pass: 'x' }) });
+  const r3 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'a@a.fr', pass: 'x', acceptCgu: true, termsVersion: TERMS }) });
   ok(r3.status === 400, 'register : mot de passe court refusé');
+  const rWeak = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Faible', email: 'f@f.fr', pass: 'abcdefgh', acceptCgu: true, termsVersion: TERMS }) });
+  ok(rWeak.status === 400, 'register : mot de passe sans majuscule/chiffre refusé');
+  const rNoCgu = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'SansCgu', email: 's@s.fr', pass: 'Abcd1234!' }) });
+  ok(rNoCgu.status === 400, 'register : sans acceptation CGU refusé');
 
-  const ra = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'a@a.fr', pass: 'abcd' }) });
+  const ra = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'a@a.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
   ok(ra.status === 200 && ra.body.token, 'register Alice ok');
   tA = ra.body.token;
 
-  const dup = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'b@b.fr', pass: 'abcd' }) });
+  const dup = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alice', email: 'b@b.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
   ok(dup.status === 400, 'register : doublon refusé');
-  const dupMail = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alicia', email: 'a@a.fr', pass: 'abcd' }) });
+  const dupMail = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Alicia', email: 'a@a.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
   ok(dupMail.status === 400, 'register : email doublon refusé');
 
-  const rb = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Bob', email: 'b@b.fr', pass: 'bcde' }) });
+  const rb = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Bob', email: 'b@b.fr', pass: 'Bcde1234!', acceptCgu: true, termsVersion: TERMS }) });
   ok(rb.status === 200 && rb.body.token, 'register Bob ok');
   tB = rb.body.token;
 
-  const radm = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'AdminTest', email: 'ad@a.fr', pass: 'admin1' }) });
+  const radm = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'AdminTest', email: 'ad@a.fr', pass: 'Admin1234!', acceptCgu: true, termsVersion: TERMS }) });
   ok(radm.status === 200, 'register admin ok');
   tAdmin = radm.body.token;
 
-  const bad = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Alice', pass: 'zzzz' }) });
+  const bad = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Alice', pass: 'Zzzz9999!' }) });
   ok(bad.status === 400, 'login : mauvais mot de passe refusé');
-  const byMail = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'a@a.fr', pass: 'abcd' }) });
+  const byMail = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'a@a.fr', pass: 'Abcd1234!' }) });
   ok(byMail.status === 200 && byMail.body.name === 'Alice', 'login par e-mail ok');
-  const noWho = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Ghost', pass: 'abcd' }) });
+  const noWho = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Ghost', pass: 'Abcd1234!' }) });
   ok(noWho.status === 400, 'login : utilisateur inconnu refusé');
 
   const me = await j('/api/me', {}, tA);
@@ -259,6 +265,44 @@ let tA = null, tB = null, tAdmin = null;
   ok(gone.status === 401, 'compte supprimé : session révoquée');
 }
 
+/* ── sauvegarde insane refusée ── */
+{
+  const bad = await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, cash: 1e15 } }) }, tA);
+  ok(bad.status === 400, 'save : valeur hors limites refusée (anti-triche)');
+  const bad2 = await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, biz: new Array(9).fill({ type: 'banque' }) } }) }, tA);
+  ok(bad2.status === 400, 'save : trop d’entreprises refusé');
+}
+
+/* ── webhook Stripe : signature vérifiée ── */
+{
+  const crypto = await import('node:crypto');
+  const t = Math.floor(Date.now() / 1000);
+  const payload = JSON.stringify({ type: 'checkout.session.completed', data: { object: { client_reference_id: 'Alice', metadata: { user: 'Alice', pack: 'p1' } } } });
+  const sig = 't=' + t + ',v1=' + crypto.createHmac('sha256', 'whsec_fake').update(t + '.' + payload).digest('hex');
+  const r = await fetch(BASE + '/api/stripe/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'stripe-signature': sig }, body: payload });
+  ok(r.status === 200, 'webhook Stripe signature valide accepté');
+  const mb = await j('/api/mailbox', {}, tA);
+  ok((mb.body.ops || []).some(o => o.type === 'packCredit' && o.amount === 5000), 'webhook : pack crédité automatiquement dans la mailbox');
+  const badSig = await fetch(BASE + '/api/stripe/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'stripe-signature': 't=' + t + ',v1=' + '0'.repeat(64) }, body: payload });
+  ok(badSig.status === 400, 'webhook Stripe signature invalide refusé');
+  const noSig = await fetch(BASE + '/api/stripe/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload });
+  ok(noSig.status === 400, 'webhook sans signature refusé');
+}
+
+/* ── aucune limitation du nombre de sessions/comptes ── */
+{
+  await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'MultiSession', email: 'ms@ms.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tokens = [];
+  for (let i = 0; i < 7; i++) {
+    const r = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'MultiSession', pass: 'Abcd1234!' }) });
+    if (r.status === 200) tokens.push(r.body.token);
+  }
+  ok(tokens.length === 7, '7 connexions simultanées acceptées (aucune limite de sessions)');
+  let allOk = true;
+  for (const t of tokens) { const me = await j('/api/me', {}, t); if (me.status !== 200) allOk = false; }
+  ok(allOk, 'toutes les sessions restent valides (aucune déconnexion forcée)');
+}
+
 /* ── présence & ping ── */
 {
   const p1 = await j('/api/ping', { method: 'POST' }, tA);
@@ -276,11 +320,11 @@ let tA = null, tB = null, tAdmin = null;
   const after = await j('/api/me', {}, tA);
   ok(after.status === 401, 'session invalidée après logout');
 
-  const relog = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Alice', pass: 'abcd' }) });
+  const relog = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Alice', pass: 'Abcd1234!' }) });
   const tA2 = relog.body.token;
   const del = await j('/api/delete', { method: 'POST' }, tA2);
   ok(del.status === 200, 'delete account ok');
-  const relog2 = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Alice', pass: 'abcd' }) });
+  const relog2 = await j('/api/login', { method: 'POST', body: JSON.stringify({ user: 'Alice', pass: 'Abcd1234!' }) });
   ok(relog2.status === 400, 'compte supprimé : login impossible');
 }
 
@@ -288,6 +332,27 @@ let tA = null, tB = null, tAdmin = null;
 {
   const r = await fetch(BASE + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{json-casse' });
   ok(r.status === 400, 'JSON cassé : 400 propre (pas de 500)');
+}
+
+/* ── rate limiting (serveur dédié, limites réelles) ── */
+{
+  const PORT2 = PORT + 1;
+  const srv2 = spawn(process.execPath, [path.join(ROOT, 'server/server.js')], {
+    env: { ...process.env, PORT: String(PORT2), DB_PATH: TMPDB + '-rl' }, stdio: 'ignore',
+  });
+  const B2 = 'http://localhost:' + PORT2;
+  let up2 = false;
+  for (let i = 0; i < 40; i++) { try { const r = await fetch(B2 + '/api/health'); if (r.ok) { up2 = true; break; } } catch (e) {} await new Promise(r => setTimeout(r, 120)); }
+  if (up2) {
+    let got429 = false;
+    for (let i = 0; i < 16; i++) {
+      const r = await fetch(B2 + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: 'nobody', pass: 'Abcd1234!' }) });
+      if (r.status === 429) { got429 = true; break; }
+    }
+    ok(got429, 'rate-limit auth : 429 après rafale');
+  } else ok(false, 'serveur rate-limit démarré');
+  try { srv2.kill('SIGKILL'); } catch (e) {}
+  try { fs.rmSync(TMPDB + '-rl', { recursive: true, force: true }); } catch (e) {}
 }
 
 console.log(fail ? '✗ ' + fail + ' échec(s) / ' + (pass + fail) : '✓ ' + pass + ' assertions serveur passées');

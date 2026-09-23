@@ -21,16 +21,20 @@
 
 <!-- ══════════ INTRO ══════════ -->
 <div id="scr-intro" class="screen active">
-  <div class="intro-sky"></div>
-  <div class="intro-dawn" id="introDawn"></div>
-  <div class="cloud c1"></div>
-  <div class="cloud c2"></div>
-  <div class="cloud c3"></div>
-  <div class="citylayer far" id="cityFar"></div>
-  <div class="citylayer near" id="cityNear"></div>
-  <div class="intro-ground"></div>
-  <div class="car carA"></div>
-  <div class="car carB"></div>
+  <div class="in-sky"></div>
+  <div class="in-stars" id="inStars"></div>
+  <div class="in-sun" id="introDawn"></div>
+  <div class="in-cloud c1"></div>
+  <div class="in-cloud c2"></div>
+  <div class="in-cloud c3"></div>
+  <div class="in-city far" id="cityFar"></div>
+  <div class="in-city near" id="cityNear"></div>
+  <div class="in-ground">
+    <div class="in-road"></div>
+    <div class="in-lamps" id="inLamps"></div>
+  </div>
+  <div class="in-car carA"></div>
+  <div class="in-car carB"></div>
   <div class="walker" id="walker">
     <svg viewBox="0 0 60 92" width="82" height="124" aria-hidden="true">
       <g class="w-root">
@@ -43,14 +47,16 @@
       </g>
     </svg>
   </div>
-  <div class="intro-ui">
-    <div class="intro-logo">HEXA<span>LIFE</span></div>
-    <div class="intro-sub">Simulateur de vie &middot; Économie française &middot; Temps réel</div>
-    <div class="loadbar"><div class="loadbar-fill" id="loadFill"></div></div>
+  <div class="in-ui">
+    <div class="in-logo" id="inLogo" aria-label="HEXALIFE"></div>
+    <div class="in-tag" id="inTag"></div>
+    <div class="in-load"><div class="in-load-fill" id="loadFill"></div><div class="in-load-spark"></div></div>
     <div class="load-meta"><span id="loadTip">Initialisation…</span><span id="loadPct">0%</span></div>
     <div class="load-steps" id="loadSteps"></div>
-    <button id="btnStart" class="btn btn-primary btn-lg" disabled>Entrer en ville</button>
+    <button id="btnStart" class="btn btn-primary btn-lg in-start" disabled>Entrer en ville</button>
   </div>
+  <div class="in-vignette"></div>
+  <div class="in-wipe"></div>
 </div>
 
 <!-- ══════════ AUTH ══════════ -->
@@ -83,8 +89,21 @@
       <form id="formReg" class="auth-form" autocomplete="off" hidden>
         <label>Pseudo (3 caractères min.)<input id="rg_user" type="text" maxlength="20" required></label>
         <label>Adresse e-mail<input id="rg_mail" type="email" required></label>
-        <label>Mot de passe (4 caractères min.)<input id="rg_pass" type="password" required></label>
-        <label>Confirmer le mot de passe<input id="rg_pass2" type="password" required></label>
+        <label class="pw-label">Mot de passe (8 car. min., majuscule, minuscule, chiffre)
+          <span class="pw-wrap">
+            <input id="rg_pass" type="password" maxlength="128" required autocomplete="new-password">
+            <button type="button" class="pw-eye" id="eyePass" title="Afficher / masquer" aria-label="Afficher ou masquer le mot de passe">👁</button>
+          </span>
+          <span class="pw-meter"><span id="pwBar"></span></span>
+          <span class="pw-hint" id="pwHint">Force : —</span>
+        </label>
+        <label>Confirmer le mot de passe
+          <span class="pw-wrap"><input id="rg_pass2" type="password" maxlength="128" required autocomplete="new-password"></span>
+        </label>
+        <label class="cgu-row">
+          <input type="checkbox" id="rg_cgu">
+          <span>J’ai lu et j’accepte les <a href="/cgu.html" target="_blank" rel="noopener">conditions d’utilisation</a> (compte supprimé après 5 jours d’inactivité).</span>
+        </label>
         <div class="auth-msg" id="regMsg"></div>
         <button class="btn btn-primary btn-block" type="submit" id="rg_btn">Créer mon citoyen</button>
       </form>
