@@ -140,31 +140,6 @@ try {
   await sleep(900);
   await shot('13-banque-compte');
 
-  // ── TERMINAL 3D : insertion de la carte bleue, virement vers Livret A, ticket, éjection ──
-  await page.click('[data-card="cb"]');
-  await sleep(1500);
-  await shot('13b-terminal-carte-inseree');
-  const screenOn = await page.evaluate(() => !!document.querySelector('.term-screen.on'));
-  if (!screenOn) errors.push('terminal : écran non allumé après insertion');
-  await page.fill('#termAmt', '500');
-  await page.click('[data-term="act"][data-from="compte"][data-to="livret"]');
-  await sleep(1100);
-  await shot('13c-terminal-ticket');
-  const livAfter = await page.evaluate(() => G.bank.livret);
-  if (!(livAfter >= 500)) errors.push('terminal : virement Livret A échoué (' + livAfter + ')');
-  await page.click('[data-term="statement"]');
-  await sleep(400);
-  await shot('13d-terminal-releve');
-  await page.click('[data-term="eject"]');
-  await sleep(1500);
-  const termGone = await page.evaluate(() => !document.querySelector('.term-ov'));
-  if (!termGone) errors.push('terminal : overlay resté ouvert après éjection');
-
-  // tableau de bord avec le portefeuille de cartes
-  await page.click('[data-id="vie"]');
-  await sleep(700);
-  await shot('13e-accueil-portefeuille');
-
   // ── PAIEMENT SANS CONTACT : gros achat (formation) avec drag de la carte sur le lecteur ──
   await page.evaluate(() => { G.cash = 0; G.bank.compte = 20000; G.diplomas = []; G.training = null; UI.render(true); });
   await page.click('[data-id="carriere"]');
@@ -188,6 +163,36 @@ try {
     const trained = await page.evaluate(() => !!G.training && !document.querySelector('.nfc-ov'));
     if (!trained) errors.push('NFC : formation non démarrée après paiement sans contact');
   }
+
+  // ── GAB : insertion par clic sur la fente, clavier, retrait billets + ticket ──
+  await page.evaluate(() => { G.bank.compte = 5000; G.cash = 0; UI.render(true); });
+  await page.click('[data-id="banque"]');
+  await sleep(700);
+  await page.click('[data-card="cb"]');
+  await sleep(800);
+  const atmOn = await page.evaluate(() => !!document.querySelector('.atm-ov'));
+  if (!atmOn) errors.push('GAB : overlay absent au clic carte');
+  else {
+    await page.click('#atmSlot');
+    await sleep(1300);
+    const screenOn = await page.evaluate(() => !!document.querySelector('.atm-screen.on'));
+    if (!screenOn) errors.push('GAB : écran non allumé après insertion');
+    for (const k of ['5', '0', '0', '0', '0']) { await page.click('[data-key="' + k + '"]'); await sleep(80); }
+    await page.click('[data-term="act"][data-from="compte"][data-to="cash"]');
+    await sleep(900);
+    const cashOk = await page.evaluate(() => G.cash >= 500);
+    if (!cashOk) errors.push('GAB : retrait non exécuté');
+    await shot('16-gab-ticket');
+    await page.click('[data-term="eject"]');
+    await sleep(1300);
+    if (await page.evaluate(() => !!document.querySelector('.atm-ov'))) errors.push('GAB : overlay resté ouvert');
+  }
+  // courses : sélecteur de magasin
+  await page.click('[data-id="marche"]');
+  await sleep(600);
+  const chips = await page.evaluate(() => document.querySelectorAll('.shop-chip').length);
+  if (chips < 3) errors.push('courses : sélecteur de magasins incomplet (' + chips + ')');
+  await shot('17-courses-magasins');
 
   // entreprise : fonder une boulangerie
   await page.evaluate(() => { G.diplomas.push('cap_bl'); G.cash = 0; G.bank.compte = 250000; UI.render(true); });

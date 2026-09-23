@@ -439,17 +439,19 @@ const server = http.createServer(async (req, res) => {
         if (!to) return json(res, 400, { err: 'Joueur introuvable.' });
         if (to === a.name) return json(res, 400, { err: 'Destinataire invalide (vous-même).' });
         if (!(amount > 0) || amount > MAX_TRANSFER) return json(res, 400, { err: 'Montant invalide.' });
+        const tax = Math.max(1, Math.round(amount * 0.05));
+        const total = amount + tax;
         const avail = savesBalance(a.name) - (DB.holds[a.name] || 0);
-        if (avail < amount) return json(res, 400, { err: 'Solde insuffisant.' });
+        if (avail < total) return json(res, 400, { err: 'Solde insuffisant (montant + taxe de ' + tax + ' €).' });
         DB.mailbox[a.name] = DB.mailbox[a.name] || [];
         DB.mailbox[to] = DB.mailbox[to] || [];
         if (DB.mailbox[a.name].length > 200 || DB.mailbox[to].length > 200)
           return json(res, 429, { err: 'Boîte de réception saturée, réessayez plus tard.' });
-        DB.mailbox[a.name].push({ id: rid(), type: 'debit', amount, to, at: Date.now() });
+        DB.mailbox[a.name].push({ id: rid(), type: 'debit', amount: total, to, at: Date.now() });
         DB.mailbox[to].push({ id: rid(), type: 'credit', amount, from: a.name, at: Date.now() });
-        DB.holds[a.name] = (DB.holds[a.name] || 0) + amount;
+        DB.holds[a.name] = (DB.holds[a.name] || 0) + total;
         persist();
-        return json(res, 200, { ok: true });
+        return json(res, 200, { ok: true, tax, total });
       }
 
       /* ── Mailbox (ops pendantes) ── */
@@ -491,6 +493,60 @@ const server = http.createServer(async (req, res) => {
       }
       if (url === '/api/announce') {
         return json(res, 200, { list: DB.announces.filter(x => Date.now() - (x.at || 0) < 86400000) });
+      }
+
+      /* ── Magasins joueurs (courses entre joueurs) ── */
+      if (url === '/api/shops') {
+        const shops = [];
+        Object.keys(DB.saves).forEach(owner => {
+          const sv = DB.saves[owner];
+          if (sv && Array.isArray(sv.biz)) {
+            sv.biz.forEach((b, idx) => {
+              if (b && b.type === 'magasin') {
+                const g = (b.grocery && typeof b.grocery === 'object') ? b.grocery : {};
+                shops.push({
+                  owner, idx,
+                  name: String(b.name || ('Magasin ' + owner)).slice(0, 60),
+                  margin: typeof g.margin === 'number' && isFinite(g.margin) ? Math.max(-0.5, Math.min(1, g.margin)) : 0.10,
+                  stock: Math.max(0, Math.floor(g.stock || 0)),
+                  online: isOnline(owner)
+                });
+              }
+            });
+          }
+        });
+        return json(res, 200, { shops: shops.slice(0, 50) });
+      }
+      /* ── Achat dans un magasin joueur : le serveur fait foi ── */
+      if (url === '/api/buyShop' && req.method === 'POST') {
+        const a = authUser(req, query);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        if (!rateOk(ip, 'buy', 30)) return json(res, 429, { err: 'Achats trop rapprochés.' });
+        const owner = String(body.owner || '');
+        const idx = Math.floor(+body.idx);
+        const foodId = String(body.food || '');
+        const q = Math.floor(+body.q || 0);
+        if (!(q >= 1 && q <= 99)) return json(res, 400, { err: 'Quantité invalide.' });
+        const FOODS = { eau:0.85, cafe:2.10, baguette:1.20, croissant:1.30, jus:2.80, sandwich:4.60, kebab:9.50, marche:14.00, traiteur:26.00, ramen:1.50, pizza:3.90, gastro:75.00 };
+        if (!(foodId in FOODS)) return json(res, 400, { err: 'Produit inconnu.' });
+        const sv = DB.saves[owner];
+        if (!sv || !Array.isArray(sv.biz) || !sv.biz[idx] || sv.biz[idx].type !== 'magasin') return json(res, 400, { err: 'Magasin introuvable.' });
+        if (owner === a.name) return json(res, 400, { err: 'Utilisez l’achat direct dans votre propre magasin.' });
+        const g = (sv.biz[idx].grocery && typeof sv.biz[idx].grocery === 'object') ? sv.biz[idx].grocery : { margin: 0.10, stock: 0 };
+        const margin = typeof g.margin === 'number' && isFinite(g.margin) ? Math.max(-0.5, Math.min(1, g.margin)) : 0.10;
+        const stock = Math.max(0, Math.floor(g.stock || 0));
+        if (stock < q) return json(res, 400, { err: 'Rayon du vendeur vide (' + stock + ' en stock).' });
+        const price = +((FOODS[foodId] * (1 + margin)) * q).toFixed(2);
+        const avail = savesBalance(a.name) - (DB.holds[a.name] || 0);
+        if (avail < price) return json(res, 400, { err: 'Solde insuffisant (' + price + ' € requis).' });
+        DB.mailbox[a.name] = DB.mailbox[a.name] || [];
+        DB.mailbox[owner] = DB.mailbox[owner] || [];
+        if (DB.mailbox[a.name].length > 200 || DB.mailbox[owner].length > 200) return json(res, 429, { err: 'Boîte saturée.' });
+        DB.mailbox[a.name].push({ id: rid(), type: 'shopDebit', amount: price, q, food: foodId, label: 'Courses — ' + foodId + ' ×' + q + ' (' + String(sv.biz[idx].name || 'magasin') + ')', at: Date.now() });
+        DB.mailbox[owner].push({ id: rid(), type: 'shopSale', amount: price, q, idx, from: a.name, at: Date.now() });
+        DB.holds[a.name] = (DB.holds[a.name] || 0) + price;
+        persist();
+        return json(res, 200, { ok: true, price });
       }
 
       /* ── Banques joueurs ── */

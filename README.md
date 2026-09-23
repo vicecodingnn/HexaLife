@@ -12,6 +12,28 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### 🏧 v11.6 — vrai distributeur, entreprises vivantes, courses multi-magasins, taxe transferts
+- **Distributeur automatique HEXAPAY GAB T-800** (clic sur une carte) : machine complète
+  animée — écran phosphore scanlines, **clavier physique** (saisie du montant touche par
+  touche), fente CARTE où l'on **insère réellement la carte** (glisser-déposer ou clic),
+  LEDs d'activité, **imprimante à tickets** (ticket qui sort à chaque opération),
+  **tiroir à billets** (les billets sortent sur retrait), éjection de carte animée.
+- **Entreprises enrichies PAR TYPE** :
+  - Boulangerie : fraîcheur (pertes quotidiennes réduites par la Chambre froide),
+    créneaux d'affluence (matin rush ×1,3…), flux de ventes en direct.
+  - Magasin : 2 rayons de plus, **vols en rayon** (vidéosurveillance), contrat fournisseur
+    −12 %, et **rayon épicerie vendu aux autres joueurs** (marge réglable, stock réassortable).
+  - Immo : rénovations (+20 % commissions/niveau).
+  - Banque : réseau de GAB (frais), crédits risqués (+rendement/+défauts).
+  - Toutes : panneau **flux en direct** animé, compteurs pertes/vols, chips créneau.
+- **Courses multi-magasins** : enseignes PNJ (Hardi Discount −12 %, Market Express +12 %),
+  **magasins des joueurs** (leurs prix = leur marge, leur stock vérifié serveur, ils
+  encaissent automatiquement) et le vôtre.
+- **Taxe de 5 % (min 1 €) sur les transferts joueurs**, affichée en direct dans la modale
+  d'envoi et calculée côté serveur (aucune contourne possible).
+- Bugs corrigés : boucle de re-render infinie de la liste des magasins, sélecteur de
+  magasin ignoré par le moteur en appel direct, ancien overlay terminal résiduel.
+
 ### 🎬 v11.5 — intro titre-only, transitions fluides, boutique infalsifiable
 - **Intro refaite, simple et hyper stylée** : fond profond à orbes lumineux + grille
   respirante, titre **HEXALIFE** en lettres qui se révèlent (blur + rotation 3D stagger),

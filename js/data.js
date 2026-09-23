@@ -119,7 +119,8 @@ const DATA = {
       label:'Magasin', cost:18000, traffic:3.4, maxEmp:4,
       prods: [
         { id:'epicerie', n:'Épicerie', cost:2.6, ref:5.9, w:5 }, { id:'boissons', n:'Boissons', cost:1.4, ref:3.4, w:4 },
-        { id:'hygiene', n:'Hygiène', cost:2.2, ref:5.2, w:2 }, { id:'snacks', n:'Snacks', cost:0.9, ref:2.3, w:5 }
+        { id:'hygiene', n:'Hygiène', cost:2.2, ref:5.2, w:2 }, { id:'snacks', n:'Snacks', cost:0.9, ref:2.3, w:5 },
+        { id:'frais', n:'Frais', cost:3.2, ref:6.9, w:3 }, { id:'maison', n:'Maison', cost:2.8, ref:6.2, w:2 }
       ]
     },
     immobilier: { label:'Agence immo', cost:40000, req:'carteT', maxEmp:3 },
@@ -130,21 +131,27 @@ const DATA = {
     boulangerie: [
       { id:'four', n:'Four à sole', d:'+1 fournée/s/niveau', cost:3500, max:3, grow:1.8 },
       { id:'mkt', n:'Pub locale', d:'+15 % clients/niveau', cost:2500, max:4, grow:1.7 },
-      { id:'decor', n:'Terrasse', d:'+40 % réputation/niveau', cost:1800, max:3, grow:1.6 }
+      { id:'decor', n:'Terrasse', d:'+40 % réputation/niveau', cost:1800, max:3, grow:1.6 },
+      { id:'frigo', n:'Chambre froide', d:'-50 % de pertes de fraîcheur/niveau', cost:2800, max:2, grow:1.7 }
     ],
     magasin: [
       { id:'mkt', n:'Catalogue', d:'+15 % clients/niveau', cost:2200, max:4, grow:1.7 },
       { id:'caisses', n:'Caisses auto', d:'+10 % clients/niveau', cost:3000, max:3, grow:1.8 },
-      { id:'rayons', n:'Rayons opt.', d:'+40 % réputation/niveau', cost:1600, max:3, grow:1.6 }
+      { id:'rayons', n:'Rayons opt.', d:'+40 % réputation/niveau', cost:1600, max:3, grow:1.6 },
+      { id:'secu', n:'Vidéosurveillance', d:'-60 % de vols/niveau', cost:2400, max:2, grow:1.7 },
+      { id:'fourn', n:'Contrat fournisseur', d:'-12 % coût de réassort', cost:3000, max:1, grow:1 }
     ],
     immobilier: [
       { id:'reseau', n:'Apporteurs', d:'+25 % commissions/niveau', cost:5000, max:4, grow:1.8 },
-      { id:'vitrine', n:'Vitrine', d:'+1 mandat gratuit/min/niveau', cost:8000, max:2, grow:2.0 }
+      { id:'vitrine', n:'Vitrine', d:'+1 mandat gratuit/min/niveau', cost:8000, max:2, grow:2.0 },
+      { id:'reno', n:'Rénovation', d:'+20 % de commissions/niveau', cost:6000, max:3, grow:1.8 }
     ],
     banque: [
       { id:'app', n:'App mobile', d:'Comptes +rapides', cost:9000, max:4, grow:1.8 },
       { id:'secu', n:'Anti-fraude', d:'-25 % défauts/niveau', cost:6000, max:3, grow:1.7 },
-      { id:'trader', n:'Salle marchés', d:'+0,5 pt rendement', cost:15000, max:2, grow:2.0 }
+      { id:'trader', n:'Salle marchés', d:'+0,5 pt rendement', cost:15000, max:2, grow:2.0 },
+      { id:'gab', n:'Réseau de GAB', d:'+frais de retrait (comptes)', cost:8000, max:3, grow:1.8 },
+      { id:'risque', n:'Crédits risqués', d:'+35 % rendement crédits, +50 % défauts', cost:5000, max:2, grow:1.9 }
     ]
   },
 
@@ -228,6 +235,14 @@ const DATA = {
     { id:'q_cash', n:'Atteindre 10 000 €', tgt:10000, type:'cash', rew:600, xp:120 },
     { id:'q_lotto', n:'Jouer 3 fois', tgt:3, type:'lotto', rew:150, xp:40 }
   ],
+
+  /* — v11.6 : enseignes PNJ pour les courses (multiplicateur de prix) — */
+  shopsNPC: [
+    { id:'superu', n:'SuperU City', mult:1.00, d:'Le généraliste équilibré du quartier.' },
+    { id:'hardis', n:'Hardi Discount', mult:0.88, d:'Prix cassés toute l’année, rayons parfois vides.' },
+    { id:'market', n:'Market Express', mult:1.12, d:'Ouvert tard le soir : ça se paie.' }
+  ],
+  transferTax: 0.05,
 
   /* — v11 : récompense quotidienne (jour 1 → 7, puis cycle sur le jour 7) — */
   daily: [

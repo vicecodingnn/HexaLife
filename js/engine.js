@@ -13,7 +13,7 @@ const T = {
   cashDisp: 0, cashInit: false, hist: [], tab: 'vie', selBiz: -1, bizTab: 'overview',
   offer: null, offerMode: 'plein', cands: null, lastSaleFeed: 0,
   jobF: { sec: '', q: '', ok: false }, qT: null, netSign: 0, isAdmin: false,
-  journalF: 'all', lastErr: {}, lastStockAlert: 0
+  journalF: 'all', lastErr: {}, lastStockAlert: 0, shopSel: { kind: 'npc', id: 'superu', owner: '' }, shopsList: []
 };
 const SAVE_V = 11;
 
@@ -102,6 +102,26 @@ function applyOp(op) {
       UI.cardFx('Paiement Stripe confirmé', '+' + eur0(op.amount));
       UI.confetti(); FX.sound('win');
       UI.toast('💎 Paiement détecté automatiquement : +' + eur0(op.amount) + ' crédités !', 'good');
+    }
+    else if (op.type === 'shopDebit') {
+      const f = foodById(op.food);
+      const q = clamp(Math.floor(num(op.q, 1, 1, 99)), 1, 99);
+      pay(num(op.amount, 0, 0, 1e12), op.label || 'Courses', 'food');
+      if (f) G.inv[f.id] = (G.inv[f.id] || 0) + q;
+      mission('shop', q); addXp(2 * q);
+      FX.sound('buy');
+      UI.toast('🛒 Course livrée : ' + (f ? f.ico + ' ' + esc(f.n) : 'article') + ' ×' + q + ' (−' + eur(op.amount) + ')', 'good');
+    }
+    else if (op.type === 'shopSale') {
+      const b = G.biz[idxOk(op.idx, G.biz.length)];
+      receive(num(op.amount, 0, 0, 1e12), 'Vente épicerie — ' + (b ? b.name : 'magasin'), 'biz');
+      if (b && b.grocery) {
+        b.grocery.stock = Math.max(0, b.grocery.stock - clamp(Math.floor(num(op.q, 0, 0, 1e9)), 0, 1e9));
+        b.rev = num(b.rev, 0) + num(op.amount, 0, 0, 1e12);
+        bizFeed(b, 'Vente épicerie · ' + String(op.from || 'client'), num(op.amount, 0, 0, 1e12));
+      }
+      FX.sound('cash');
+      UI.toast('🛒 ' + esc(op.from || 'Un client') + ' a acheté dans votre magasin (+' + eur(op.amount) + ')', 'good');
     }
     else if (op.type === 'adminCredit') { receive(num(op.amount, 0, 0, 1e12), 'Bonus administrateur', 'in'); UI.confetti(); FX.sound('win'); UI.toast('🎁 Bonus admin +' + eur(op.amount), 'good'); }
     else if (op.type === 'adminDebit') { pay(num(op.amount, 0, 0, 1e12), 'Malus administrateur', 'out'); FX.sound('error'); UI.toast('⚠ Malus admin −' + eur(op.amount), 'bad'); }
@@ -359,6 +379,14 @@ function sanitizeBiz(b) {
   for (const m of (DATA.mkt[b.type] || [])) if (m.perk && b.perks && b.perks[m.perk]) out.perks[m.perk] = true;
   if (b.order && typeof b.order === 'object' && num(b.order.until, 0) > Date.now() && bt.prods && bt.prods.some(p => p.id === b.order.p)) {
     out.order = { p: b.order.p, pn: String(b.order.pn || '').slice(0, 40), qty: Math.floor(num(b.order.qty, 1, 1, 1000)), reward: num(b.order.reward, 0, 0, 1e10), until: num(b.order.until, 0) };
+  }
+  out.spoil = Math.floor(num(b.spoil, 0, 0, 1e12));
+  out.theft = Math.floor(num(b.theft, 0, 0, 1e12));
+  out.feed = Array.isArray(b.feed) ? b.feed.filter(x => x && typeof x === 'object').slice(-6)
+    .map(x => ({ t: num(x.t, 0, 0), l: String(x.l || '').slice(0, 60), a: num(x.a, 0, -1e12, 1e12) })) : [];
+  if (b.type === 'magasin') {
+    const g = (b.grocery && typeof b.grocery === 'object') ? b.grocery : {};
+    out.grocery = { margin: num(g.margin, 0.10, -0.5, 1), stock: Math.floor(num(g.stock, 0, 0, 1e9)) };
   }
   if (b.type === 'immobilier') out.mandats = Math.floor(num(b.mandats, 0, 0, 1e7));
   if (b.type === 'banque') {
@@ -704,6 +732,16 @@ function tickBiz(b, bi, info, now, af) {
       });
     }
     if (b.type === 'boulangerie') {
+      /* pertes de fraîcheur chaque "jour" (60 ticks) */
+      if (W.t % 60 === 0) {
+        const rate = 0.15 * (1 - 0.5 * upLvl(b, 'frigo'));
+        let lost = 0;
+        bt.prods.forEach(pd => {
+          const st = b.stock[pd.id] || 0;
+          if (st > 0) { const l = Math.floor(st * rate); if (l > 0) { b.stock[pd.id] = st - l; lost += l; } }
+        });
+        if (lost > 0) { b.spoil = (b.spoil || 0) + lost; bizFeed(b, 'Pertes fraîcheur', -lost); }
+      }
       const crafts = 1 + b.emps.length + upLvl(b, 'four');
       for (let k = 0; k < crafts; k++) {
         const rec = bt.prods[irnd(0, bt.prods.length - 1)];
@@ -722,7 +760,7 @@ function tickBiz(b, bi, info, now, af) {
     const act = 0.85 + 0.3 * Math.sin(W.t / 70) + Math.random() * 0.3;
     const repF = 0.4 + b.rep / 80;
     const priceF = priceFactor(b) * (promoOn ? 1.12 : 1);
-    const demand = Math.max(0, Math.round(bt.traffic * repF * priceF * act * mktMul * rnd(0.5, 1.5) * (1 + b.emps.length * 0.08)));
+    const demand = Math.max(0, Math.round(bt.traffic * repF * priceF * act * mktMul * curSlot().m * rnd(0.5, 1.5) * (1 + b.emps.length * 0.08)));
     let sold = 0, rev = 0;
     for (let k = 0; k < demand; k++) {
       const p = pickProd(b);
@@ -730,6 +768,7 @@ function tickBiz(b, bi, info, now, af) {
         b.stock[p.id]--;
         const unit = promoOn ? +(b.prices[p.id] * 0.9).toFixed(2) : b.prices[p.id];
         rev += unit; sold++; b.counters[p.id] = (b.counters[p.id] || 0) + 1;
+        if (sold <= 3) bizFeed(b, 'Vente ' + p.n, unit);
         maybeSaleFeed(p.n, unit, b.name);
       } else b.rep = Math.max(5, b.rep - 0.05);
     }
@@ -745,26 +784,36 @@ function tickBiz(b, bi, info, now, af) {
     b.rep = clamp(b.rep + (sold ? 0.02 * sold * repGain : -0.03), 5, 100);
     if (rev > 0) { receive(rev, 'Ventes — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
     G.stats.sales += sold; if (sold) mission('sell', sold);
+    /* démarque : vols en rayon si pas de vidéosurveillance */
+    const totalSt = bt.prods.reduce((a2, pd) => a2 + (b.stock[pd.id] || 0), 0);
+    if (totalSt > 0 && Math.random() < 0.02 * (1 - 0.6 * upLvl(b, 'secu'))) {
+      const pdv = pickProd(b);
+      if (pdv && (b.stock[pdv.id] || 0) > 0) {
+        const n = Math.min(b.stock[pdv.id], irnd(1, 2));
+        b.stock[pdv.id] -= n; b.theft = (b.theft || 0) + n;
+        bizFeed(b, 'Vols en rayon', -n);
+      }
+    }
     const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
     if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   else if (b.type === 'immobilier') {
     if (upLvl(b, 'vitrine') && W.t % 60 === 0) b.mandats = (b.mandats || 0) + upLvl(b, 'vitrine');
-    let rev = (b.mandats || 0) * rnd(0.8, 2.2) * (1 + 0.25 * upLvl(b, 'reseau')) * (1 + 0.05 * b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
+    let rev = (b.mandats || 0) * rnd(0.8, 2.2) * (1 + 0.25 * upLvl(b, 'reseau')) * (1 + 0.2 * upLvl(b, 'reno')) * (1 + 0.05 * b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
     rev *= af;
     if (rev > 0) { receive(rev, 'Commissions — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
     const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
     if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   else if (b.type === 'banque') {
-    const fees = b.accounts * 3 / 60 * (perk(b, 'fidelite') ? 1.1 : 1);
-    const loanInc = b.loans * (b.tauxCredit + 0.5 * upLvl(b, 'trader')) / 100 / 3600;
+    const fees = b.accounts * (3 + 0.6 * upLvl(b, 'gab')) / 60 * (perk(b, 'fidelite') ? 1.1 : 1);
+    const loanInc = b.loans * (b.tauxCredit + 0.5 * upLvl(b, 'trader')) / 100 / 3600 * (1 + 0.35 * upLvl(b, 'risque'));
     const depCost = b.deposits * b.tauxLivret / 100 / 3600;
     if (Math.random() < 0.05 + b.mkt * 0.012 + 0.02 * upLvl(b, 'app') + 0.01 * b.emps.length + (perk(b, 'pub') ? 0.03 : 0)) b.accounts += irnd(1, 3);
     b.deposits += b.accounts * rnd(0.4, 2.2);
     const dem = b.tauxCredit < 5 ? 1400 : (b.tauxCredit < 8 ? 750 : 220);
     b.loans += dem * Math.random();
-    if (Math.random() < 0.008 * (1 - 0.25 * upLvl(b, 'secu'))) { const def = b.loans * rnd(0.005, 0.015); b.loans = Math.max(0, b.loans - def); }
+    if (Math.random() < 0.008 * (1 + 0.5 * upLvl(b, 'risque')) * (1 - 0.25 * upLvl(b, 'secu'))) { const def = b.loans * rnd(0.005, 0.015); b.loans = Math.max(0, b.loans - def); bizFeed(b, 'Défaut de crédit', -def); }
     let net = (fees + loanInc - depCost) * af;
     if (net >= 0) { receive(net, 'PNB — ' + b.name, 'biz'); info.rev += net; revTick = net; }
     else { pay(-net, 'Charge — ' + b.name, 'out'); info.chg += -net; }
@@ -775,6 +824,16 @@ function tickBiz(b, bi, info, now, af) {
   b.hist.push(revTick); if (b.hist.length > 60) b.hist.shift();
 }
 
+/* créneaux horaires (15 ticks chacun) : matin rush, midi creux, après-midi, soir */
+const SLOTS = [
+  { n: 'Matin (rush)', m: 1.3 }, { n: 'Midi', m: 0.9 }, { n: 'Après-midi', m: 1.1 }, { n: 'Soir', m: 1.25 }
+];
+function curSlot() { return SLOTS[Math.floor(W.t / 15) % 4]; }
+function bizFeed(b, l, a) {
+  if (!b.feed) b.feed = [];
+  b.feed.push({ t: Date.now(), l, a });
+  if (b.feed.length > 6) b.feed.shift();
+}
 function hasMats(b, rec) { return Object.entries(rec.in).every(([m, q]) => (b.mats[m] || 0) >= q); }
 function useMats(b, rec) { Object.entries(rec.in).forEach(([m, q]) => b.mats[m] -= q); }
 function priceFactor(b) {
@@ -882,6 +941,11 @@ const A = {
     FX.sound('click');
   },
   journalF(d) { T.journalF = d.f || 'all'; FX.sound('click'); refresh(); },
+  shopSel(d) {
+    T.shopSel = { kind: d.kind || 'npc', id: d.id || 'superu', owner: d.owner || '' };
+    FX.sound('click');
+    refresh();
+  },
 
   claimDaily() {
     if (!canClaimDaily()) return UI.toast('Récompense déjà réclamée aujourd’hui. Revenez demain !', 'warn');
@@ -900,14 +964,69 @@ const A = {
     const f = foodById(d.id); if (!f) return;
     if (!guardCardPay()) return;
     const q = clamp(Math.floor(num(d.q, 1, 1, 99)), 1, 99);
-    const unit = effPrice(f);
+    const sel = T.shopSel || { kind: 'npc', id: 'superu', owner: '' };
+    const kind = d.shopKind || sel.kind;
+    if (!d.shopRef && sel.id) { d = Object.assign({}, d, { shopRef: sel.id, owner: sel.owner }); }
+
+    /* achat chez un AUTRE joueur : le serveur fait foi (stock + prix du vendeur) */
+    if (kind === 'player') {
+      if (DB.mode() !== 'api') return UI.toast('Achats entre joueurs : mode serveur uniquement.', 'warn');
+      UI.toast('⏳ Commande transmise au magasin…', '');
+      DB.authFetch('/api/buyShop', { method: 'POST', body: JSON.stringify({ owner: d.owner, idx: +d.shopRef, food: f.id, q }) }).then(j => {
+        if (j && j.ok) { FX.sound('buy'); UI.toast('🛒 Commande acceptée : débit et livraison automatiques.', 'good'); }
+        else { FX.sound('error'); UI.toast((j && j.err) || 'Magasin indisponible.', 'bad'); }
+      }).catch(() => { FX.sound('error'); UI.toast('Serveur injoignable.', 'bad'); });
+      return;
+    }
+
+    /* PNJ ou mon propre magasin */
+    let unit = effPrice(f), shopName = null, selfBiz = null;
+    if (kind === 'self') {
+      const i = idxOk(d.shopRef, G.biz.length);
+      selfBiz = i >= 0 ? G.biz[i] : null;
+      if (!selfBiz || selfBiz.type !== 'magasin') return UI.toast('Magasin introuvable.', 'bad');
+      if (!selfBiz.grocery) selfBiz.grocery = { margin: 0.10, stock: 0 };
+      if (selfBiz.grocery.stock < q) { FX.sound('error'); return UI.toast('Votre rayon épicerie est vide : réassortez-le (onglet Production).', 'warn'); }
+      unit = +(f.p * (1 + num(selfBiz.grocery.margin, 0.10, -0.5, 1))).toFixed(2);
+      shopName = selfBiz.name;
+    } else {
+      const npc = DATA.shopsNPC.find(x => x.id === (d.shopRef || 'superu')) || DATA.shopsNPC[0];
+      unit = +(effPrice(f) * npc.mult).toFixed(2);
+      shopName = npc.n;
+    }
     const cost = +(unit * q).toFixed(2);
     if (balance() < cost) { FX.sound('error'); return UI.toast('Solde insuffisant : ' + eur(cost) + ' requis.', 'bad'); }
-    pay(cost, 'Courses — ' + f.n + (q > 1 ? ' ×' + q : ''), 'food'); G.stats.spent += cost;
+    pay(cost, 'Courses — ' + f.n + (q > 1 ? ' ×' + q : '') + ' (' + shopName + ')', 'food');
+    G.stats.spent += cost;
+    if (selfBiz) {
+      selfBiz.grocery.stock -= q;
+      selfBiz.rev = num(selfBiz.rev, 0) + cost; selfBiz.profit = num(selfBiz.profit, 0) + cost;
+      bizFeed(selfBiz, 'Vente épicerie (vous)', cost);
+    }
     G.inv[d.id] = (G.inv[d.id] || 0) + q;
     mission('shop', q); addXp(2 * q);
     FX.sound('buy');
-    UI.toast(f.ico + ' ' + f.n + (q > 1 ? ' ×' + q : '') + ' acheté' + (q > 1 ? 's' : '') + ' (−' + eur(cost) + ')', 'good');
+    UI.toast(f.ico + ' ' + f.n + (q > 1 ? ' ×' + q : '') + ' · ' + esc(shopName) + ' (−' + eur(cost) + ')', 'good');
+    refresh();
+  },
+  setMargin(d) {
+    const b = A.bizAt(d); if (!b || b.type !== 'magasin') return;
+    if (!b.grocery) b.grocery = { margin: 0.10, stock: 0 };
+    b.grocery.margin = clamp(+(num(b.grocery.margin, 0.10) + num(d.v, 0)).toFixed(2), -0.5, 1);
+    FX.sound('click');
+    UI.toast('Marge épicerie : ' + Math.round(b.grocery.margin * 100) + ' %', 'good');
+    refresh();
+  },
+  restockGrocery(d) {
+    const b = A.bizAt(d); if (!b || b.type !== 'magasin') return;
+    if (!b.grocery) b.grocery = { margin: 0.10, stock: 0 };
+    const q = clamp(Math.floor(num(d.q, 50, 1, 5000)), 1, 5000);
+    const cost = +(q * 2.2 * (1 - 0.12 * upLvl(b, 'fourn'))).toFixed(2);
+    if (balance() < cost) { FX.sound('error'); return UI.toast('Fonds insuffisants : ' + eur(cost) + '.', 'bad'); }
+    pay(cost, 'Réassort épicerie (' + q + ')', 'biz');
+    b.grocery.stock += q;
+    FX.sound('craft');
+    UI.toast('Rayon épicerie réassorti : +' + q + ' (−' + eur(cost) + ')', 'good');
     refresh();
   },
   eat(d, el) {
@@ -1606,7 +1725,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel', 'setMargin', 'restockGrocery', 'shopSel'];
 
 /* ── sauvegarde ── */
 let saveInFlight = false;

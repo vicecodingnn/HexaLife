@@ -283,7 +283,7 @@ run('régressions v11.1', `
   if (JSON.stringify(G.inv) === invAv) throw new Error('dégel : achat toujours bloqué');
   // terminal : ouverture / écran / fermeture (jsdom : rects nuls, chemins réduits)
   UI.openTerminal('cb');
-  if (!document.querySelector('.term-ov')) throw new Error('terminal non ouvert');
+  if (!document.querySelector('.atm-ov')) throw new Error('terminal non ouvert');
   A.moveMoney({from:'cash', to:'compte'}); // via termAmt présent
   UI.closeTerminal(true);
   // premium : niveau requis puis obtention + intérêts mensuels
@@ -303,7 +303,7 @@ run('régressions v11.1', `
   G.bank.cardPremium = false; G.bank.livret = 0; G.bank.compte = 5e6; G.cash = 5e6;
 `);
 await sleep(1500); // laisse l'animation d'éjection se terminer
-run('terminal fermé', `if (document.querySelector('.term-ov')) throw new Error('overlay terminal resté ouvert');`);
+run('terminal fermé', `if (document.querySelector('.atm-ov')) throw new Error('overlay terminal resté ouvert');`);
 
 // ── v11.3 : PAIEMENT SANS CONTACT (NFC) sur gros achats ──
 run('NFC gros achats', `
@@ -328,6 +328,67 @@ run('NFC gros achats', `
   if (!G.cars.includes(0)) throw new Error('achat immédiat sans banque cassé');
   G.cars = []; G.bank.bankId = bid; G.cash = 5e6; G.bank.compte = 5e6;
 `);
+
+// ── v11.6 : courses multi-magasins + GAB ──
+run('courses multi-magasins', `
+  G.cash = 100000; G.bank.bankId = null; G.inv = {};
+  // PNJ discount
+  A.shopSel({kind:'npc', id:'hardis'});
+  const fEau = foodById('eau');
+  const expHardis = +((+(effPrice(fEau) * 0.88).toFixed(2)) * 1).toFixed(2);
+  const c0 = G.cash;
+  A.buyFood({id:'eau', q:'1'});
+  if (Math.abs((c0 - G.cash) - expHardis) > 0.011) throw new Error('prix Hardi Discount faux : ' + (c0 - G.cash) + ' vs ' + expHardis);
+  // mon propre magasin : marge + stock
+  G.biz.push(sanitizeBiz({type:'magasin', name:'Mon Mag'}));
+  const mi = G.biz.length - 1;
+  G.biz[mi].grocery = { margin: 0.25, stock: 10 };
+  A.shopSel({kind:'self', id:String(mi)});
+  const expSelf = +(fEau.p * 1.25).toFixed(2);
+  const c1 = G.cash;
+  A.buyFood({id:'eau', q:'2'});
+  if (Math.abs((c1 - G.cash) - expSelf * 2) > 0.011) throw new Error('prix propre magasin faux');
+  if (G.biz[mi].grocery.stock !== 8) throw new Error('stock propre magasin non décrémenté');
+  if (G.biz[mi].rev < expSelf * 2 - 0.01) throw new Error('CA propre magasin non crédité');
+  // stock vide : refus
+  G.biz[mi].grocery.stock = 0;
+  const c2 = G.cash;
+  A.buyFood({id:'eau', q:'1'});
+  if (G.cash !== c2) throw new Error('achat sur rayon vide accepté !');
+  // marge : bornes
+  A.setMargin({b:String(mi), v:'5'});
+  if (G.biz[mi].grocery.margin > 1) throw new Error('marge non bornée');
+  A.restockGrocery({b:String(mi), q:'50'});
+  if (G.biz[mi].grocery.stock !== 50) throw new Error('réassort épicerie KO');
+  A.shopSel({kind:'npc', id:'superu'});
+  // joueur distant sans serveur : refus propre
+  A.shopSel({kind:'player', id:'0', owner:'X'});
+  A.buyFood({id:'eau', q:'1'});
+  A.shopSel({kind:'npc', id:'superu'});
+`);
+run('GAB distributeur', `
+  A.openBank({id:'ce', name:'CE', rate:'3'});
+  G.bank.compte = 5000; G.cash = 0;
+  UI.openTerminal('cb');
+  if (!document.querySelector('.atm-ov')) throw new Error('GAB non ouvert');
+  document.querySelector('#atmSlot').dispatchEvent(new MouseEvent('click', {bubbles:true}));
+`);
+await sleep(1400);
+run('GAB clavier', `
+  if (!document.querySelector('.atm-screen.on')) throw new Error('écran GAB non allumé');
+  ['5','0','0','0','0'].forEach(k => document.querySelector('[data-key="' + k + '"]').dispatchEvent(new MouseEvent('click', {bubbles:true})));
+  const buf = document.querySelector('#termBuf').textContent;
+  if (!/500/.test(buf)) throw new Error('clavier GAB : buffer faux (' + buf + ')');
+  document.querySelector('[data-term="act"][data-from="compte"][data-to="cash"]').dispatchEvent(new MouseEvent('click', {bubbles:true}));
+`);
+await sleep(900); // laisse le traitement animé s'exécuter
+run('GAB retrait + ticket', `
+  if (G.cash < 500) throw new Error('retrait GAB non exécuté');
+  if (!document.querySelector('.atm-receipt')) throw new Error('ticket GAB non imprimé');
+  UI.closeTerminal(true);
+`);
+await sleep(1200);
+run('GAB fermé', `if (document.querySelector('.atm-ov')) throw new Error('GAB resté ouvert');`);
 
 // ── v11.3 : tutoriel 14 étapes sans bug ──
 run('tutoriel v11.3', `
@@ -396,6 +457,7 @@ run('emploi', `
 // ── entreprises ──
 run('entreprises', `
   G.diplomas.push('cap_bl','carteT','amf'); G.diplomas=[...new Set(G.diplomas)];
+  G.cash = 5e6; G.bank.compte = 5e6; G.biz = [];
   const nf = () => { if (document.querySelector('.nfc-ov:not(.out)')) UI.nfcForce(); };
   A.openCreate({type:'boulangerie'}); A.createBiz({type:'boulangerie'}); nf();
   A.openCreate({type:'magasin'}); A.createBiz({type:'magasin'}); nf();

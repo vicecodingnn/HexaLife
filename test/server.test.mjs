@@ -168,6 +168,7 @@ ok(!!TERMS, 'endpoint /api/terms expose une version');
   // Alice a 2000 ; Bob est trouvable en minuscules (résolution de casse)
   const t1 = await j('/api/transfer', { method: 'POST', body: JSON.stringify({ to: 'bob', amount: 300 }) }, tA);
   ok(t1.status === 200 && t1.body.ok, 'transfer ok (pseudo minuscules résolu)');
+  ok(t1.body.tax === 15 && t1.body.total === 315, 'taxe de transfert 5 % calculée (15 € pour 300 €)');
 
   const mbB = await j('/api/mailbox', {}, tB);
   ok(mbB.status === 200 && mbB.body.ops.length === 1 && mbB.body.ops[0].type === 'credit' && mbB.body.ops[0].amount === 300, 'mailbox Bob : crédit 300');
@@ -301,6 +302,28 @@ ok(!!TERMS, 'endpoint /api/terms expose une version');
   let allOk = true;
   for (const t of tokens) { const me = await j('/api/me', {}, t); if (me.status !== 200) allOk = false; }
   ok(allOk, 'toutes les sessions restent valides (aucune déconnexion forcée)');
+}
+
+/* ── achats dans un magasin joueur ── */
+{
+  const ro = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'ShopOwner', email: 'so@so.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tO = ro.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'ShopOwner', cash: 0, biz: [{ type: 'magasin', name: 'Mag de ShopOwner', grocery: { margin: 0.20, stock: 5 } }] } }) }, tO);
+  const rb2 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'Buyer', email: 'bu@bu.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tBu = rb2.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'Buyer', cash: 100 } }) }, tBu);
+  const shops = await j('/api/shops');
+  ok(shops.status === 200 && shops.body.shops.some(x => x.owner === 'ShopOwner' && x.stock === 5 && Math.abs(x.margin - 0.2) < 1e-9), 'shops : magasin joueur listé avec marge+stock');
+  const buy = await j('/api/buyShop', { method: 'POST', body: JSON.stringify({ owner: 'ShopOwner', idx: 0, food: 'eau', q: 2 }) }, tBu);
+  ok(buy.status === 200 && Math.abs(buy.body.price - 2.04) < 1e-9, 'buyShop : prix = base × (1+marge) × q (2,04 €)');
+  const mbB = await j('/api/mailbox', {}, tBu);
+  ok((mbB.body.ops || []).some(o => o.type === 'shopDebit'), 'buyShop : débit acheteur en mailbox');
+  const mbO = await j('/api/mailbox', {}, tO);
+  ok((mbO.body.ops || []).some(o => o.type === 'shopSale' && o.q === 2), 'buyShop : crédit vendeur en mailbox');
+  const buyToo = await j('/api/buyShop', { method: 'POST', body: JSON.stringify({ owner: 'ShopOwner', idx: 0, food: 'eau', q: 9 }) }, tBu);
+  ok(buyToo.status === 400, 'buyShop : stock insuffisant refusé');
+  const buySelf = await j('/api/buyShop', { method: 'POST', body: JSON.stringify({ owner: 'ShopOwner', idx: 0, food: 'eau', q: 1 }) }, tO);
+  ok(buySelf.status === 400, 'buyShop : achat sur soi-même refusé');
 }
 
 /* ── présence & ping ── */

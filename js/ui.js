@@ -454,6 +454,7 @@ const UI = (() => {
     if (T.tab === 'banque' && G) FX.chart(el('chBal'), (G.histBal || []).slice(-90), 'rgb(84,163,216)');
     if (T.tab === 'immobilier' && W) FX.chart(el('chImmoLocal'), (W.hImmo || []).slice(-70), 'rgb(75,179,128)');
     if (T.tab === 'banque') loadPlayerBanks();
+    if (T.tab === 'marche') loadShops();
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && G.biz[T.selBiz].type === 'banque') loadExtClients();
     if (T.tab === 'profil') T.achNew = 0;
     if (T.tab === 'profil') buildRail();
@@ -524,6 +525,7 @@ const UI = (() => {
       '<label class="m-field">Pseudo du destinataire<input id="smTo" class="mini m-wide" maxlength="20" placeholder="Pseudo"></label>' +
       '<label class="m-field">Montant (€)<input id="smAmt" class="mini m-wide" type="text" inputmode="decimal" placeholder="100"></label>' +
       '<div class="m-hint">Solde disponible : <b class="money">' + eur(balance()) + '</b></div>' +
+      '<div class="m-hint" id="smFee" style="margin-top:10px">Taxe de transfert : 5 % du montant (minimum 1 €), à la charge de l’expéditeur.</div>' +
       '<div id="smOnline" style="margin-top:12px"><div class="det">Joueurs en ligne : chargement…</div></div>' +
       '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Annuler</button>' +
       '<button class="btn btn-primary" data-act="doSendMoney">Envoyer</button></div>');
@@ -550,6 +552,12 @@ const UI = (() => {
       '<button class="btn btn-primary" data-act="doAnnounce">Diffuser</button></div>');
     const ta = el('anText'), cnt = el('anCount');
     if (ta && cnt) ta.addEventListener('input', () => { cnt.textContent = ta.value.length; });
+    const amtIn = el('smAmt'), fee = el('smFee');
+    if (amtIn && fee) amtIn.addEventListener('input', () => {
+      const v = Math.floor(parseAmount(amtIn.value));
+      if (v > 0) { const t = Math.max(1, Math.round(v * 0.05)); fee.innerHTML = 'Montant reçu : <b class="pos">' + eur(v) + '</b> · Taxe 5 % : <b class="negx">' + eur(t) + '</b> · Total débité : <b>' + eur(v + t) + '</b>'; }
+      else fee.textContent = 'Taxe de transfert : 5 % du montant (minimum 1 €), à la charge de l’expéditeur.';
+    });
   }
   function doAnnounce() {
     const text = ((el('anText') || {}).value || '').trim();
@@ -720,18 +728,52 @@ const UI = (() => {
       }).join('') + '</div>';
   }
 
+  function loadShops() {
+    const now = Date.now();
+    if (T.shopsAt && now - T.shopsAt < 15000) return; // anti boucle de re-render
+    T.shopsAt = now;
+    if (DB.mode() !== 'api') { T.shopsList = []; return; }
+    DB.authFetch('/api/shops').then(j => {
+      T.shopsList = (j && j.shops) || [];
+      if (T.tab === 'marche') render(true);
+    }).catch(() => { T.shopsList = []; });
+  }
+  function shopUnit(f) {
+    const sel = T.shopSel || { kind: 'npc', id: 'superu' };
+    if (sel.kind === 'self') {
+      const b = G.biz[idxOk(sel.id, G.biz.length)];
+      if (b && b.grocery) return +(f.p * (1 + num(b.grocery.margin, 0.10, -0.5, 1))).toFixed(2);
+      return effPrice(f);
+    }
+    if (sel.kind === 'player') {
+      const sh = (T.shopsList || []).find(x => String(x.idx) === String(sel.id) && x.owner === sel.owner);
+      if (sh) return +(f.p * (1 + sh.margin)).toFixed(2);
+      return effPrice(f);
+    }
+    const npc = DATA.shopsNPC.find(x => x.id === sel.id) || DATA.shopsNPC[0];
+    return +(effPrice(f) * npc.mult).toFixed(2);
+  }
   function rMarche() {
-    return '<h1>Courses</h1><div class="sub">Prix du marché mis à jour toutes les ~2 min : guettez les <span class="chip green">PROMO</span> et évitez les <span class="chip red">tensions</span>. Achats par 1 ou par 5.</div><div class="panel">' +
+    const sel = T.shopSel || (T.shopSel = { kind: 'npc', id: 'superu' });
+    const chips = [];
+    DATA.shopsNPC.forEach(n => chips.push({ kind:'npc', id:n.id, owner:'', label:n.n, sub:'prix ×' + n.mult.toFixed(2), on: sel.kind==='npc' && sel.id===n.id }));
+    G.biz.forEach((b, i) => { if (b.type === 'magasin') chips.push({ kind:'self', id:String(i), owner:'', label:'🏪 ' + b.name + ' (vous)', sub: b.grocery ? ('marge ' + Math.round(b.grocery.margin*100) + ' % · stock ' + b.grocery.stock) : '', on: sel.kind==='self' && sel.id===String(i) }); });
+    (T.shopsList || []).forEach(sh => { if (sh.owner !== G.name) chips.push({ kind:'player', id:String(sh.idx), owner:sh.owner, label:'🧑‍💼 ' + sh.name, sub:'marge ' + Math.round(sh.margin*100) + ' % · stock ' + sh.stock + (sh.online ? ' · EN LIGNE' : ''), on: sel.kind==='player' && sel.id===String(sh.idx) && sel.owner===sh.owner }); });
+    const selInfo = sel.kind === 'player' ? 'Vous achetez chez un joueur : ses prix s’appliquent et il encaisse immédiatement (stock vérifié par le serveur).' : sel.kind === 'self' ? 'Vous achetez dans votre propre magasin : vos prix, votre stock, l’argent va à votre entreprise.' : 'Enseigne PNJ : prix du marché ajustés par l’enseigne.';
+    return '<h1>Courses</h1><div class="sub">Choisissez votre magasin : enseignes du quartier, magasins des joueurs (leurs prix, leur stock) ou le vôtre. Prix du marché mis à jour toutes les ~2 min.</div>' +
+      '<div class="shop-sel">' + chips.map(c => '<button class="shop-chip' + (c.on ? ' on' : '') + '" data-act="shopSel" data-kind="' + c.kind + '" data-id="' + esc(c.id) + '" data-owner="' + esc(c.owner) + '"><span class="sc-n">' + esc(c.label) + '</span><span class="sc-s">' + esc(c.sub) + '</span></button>').join('') + '</div>' +
+      '<div class="m-hint" style="margin:10px 0 16px">' + esc(selInfo) + '</div>' +
+      '<div class="panel">' +
       DATA.foods.map((f, k) => {
-        const p = effPrice(f);
+        const p = shopUnit(f);
         const ratio = p / f.p;
         const tag = ratio <= 0.9 ? '<span class="chip green price-tag">PROMO −' + Math.round((1 - ratio) * 100) + ' %</span>'
           : ratio >= 1.12 ? '<span class="chip red price-tag">+' + Math.round((ratio - 1) * 100) + ' %</span>' : '';
         return '<div class="rowline" style="animation:panelIn .4s ' + (k * 0.03) + 's both"><div style="display:flex;align-items:center;gap:12px"><span class="food-ico">' + f.ico + '</span><div><div class="lbl">' + esc(f.n) + ' ' + tag + '</div>' +
         '<div class="det">' + (f.f ? '<span class="' + (f.f > 0 ? 'pos' : 'negx') + '">faim ' + (f.f > 0 ? '+' : '') + f.f + '</span>' : '') + (f.f && f.s ? ' · ' : '') + (f.s ? '<span class="' + (f.s > 0 ? 'posb' : 'negx') + '">soif ' + (f.s > 0 ? '+' : '') + f.s + '</span>' : '') + ' · en sac : <b>' + (G.inv[f.id] || 0) + '</b></div></div></div>' +
         '<div class="buy-zone">' + (ratio <= 0.9 || ratio >= 1.12 ? '<span class="price-old">' + eur(f.p) + '</span>' : '') + '<span class="money">' + eur(p) + '</span>' +
-        '<button class="btn btn-sm btn-primary" data-act="buyFood" data-id="' + f.id + '" data-q="1">Acheter</button>' +
-        '<button class="btn btn-sm" data-act="buyFood" data-id="' + f.id + '" data-q="5" title="Acheter 5 d’un coup">×5</button></div></div>';
+        '<button class="btn btn-sm btn-primary" data-act="buyFood" data-id="' + f.id + '" data-q="1" data-shop-kind="' + sel.kind + '" data-shop-ref="' + esc(sel.id) + '" data-owner="' + esc(sel.owner || '') + '">Acheter</button>' +
+        '<button class="btn btn-sm" data-act="buyFood" data-id="' + f.id + '" data-q="5" data-shop-kind="' + sel.kind + '" data-shop-ref="' + esc(sel.id) + '" data-owner="' + esc(sel.owner || '') + '" title="Acheter 5 d’un coup">×5</button></div></div>';
       }).join('') + '</div>';
   }
 
@@ -846,6 +888,12 @@ const UI = (() => {
         '<div class="grid3"><div class="kpi"><div class="k-lbl">CA cumulé</div><div class="k-val gold">' + kfmt(b.rev) + '</div></div>' +
         '<div class="kpi"><div class="k-lbl">Réputation</div><div class="k-val">' + Math.round(b.rep) + '<span class="k-sub">/100</span></div><div class="bar b-gold" style="margin:8px 0 0"><div class="fill" style="width:' + b.rep + '%"></div></div></div>' +
         '<div class="kpi"><div class="k-lbl">Salaires versés</div><div class="k-val" style="color:var(--red)">' + kfmt(b.wagesTotal || 0) + '</div></div></div>' +
+        ((b.type === 'boulangerie' || b.type === 'magasin') ? '<div class="biz-chips"><span class="chip gold slot-chip">🕐 ' + curSlot().n + ' · affluence ×' + curSlot().m + '</span>' +
+          (b.type === 'boulangerie' ? '<span class="chip ' + ((b.spoil || 0) > 0 ? 'red' : 'green') + '">🥀 Pertes fraîcheur : ' + Math.floor(b.spoil || 0) + '</span>' : '<span class="chip ' + ((b.theft || 0) > 0 ? 'red' : 'green') + '">🕶 Vols : ' + Math.floor(b.theft || 0) + '</span>') +
+          (b.type === 'magasin' && b.grocery ? '<span class="chip">🛒 Rayon joueurs : stock ' + b.grocery.stock + ' · marge ' + Math.round(b.grocery.margin * 100) + ' %</span>' : '') + '</div>' : '') +
+        (b.type === 'banque' ? '<div class="biz-chips"><span class="chip">🏧 GAB niv ' + upLvl(b, 'gab') + '</span><span class="chip ' + (upLvl(b, 'risque') > 0 ? 'red' : '') + '">⚠ Crédits risqués niv ' + upLvl(b, 'risque') + '</span></div>' : '') +
+        (b.type === 'immobilier' ? '<div class="biz-chips"><span class="chip gold">🔨 Rénovation niv ' + upLvl(b, 'reno') + ' (+' + (upLvl(b, 'reno') * 20) + ' % commissions)</span></div>' : '') +
+        '<h3>Flux en direct</h3><div class="biz-feed">' + ((b.feed && b.feed.length) ? b.feed.slice().reverse().map(x => '<div class="bf-item ' + (x.a >= 0 ? 'in' : 'out') + '"><span class="bf-l">' + esc(x.l) + '</span><span class="bf-a">' + (x.a >= 0 ? '+' : '−') + eur(Math.abs(x.a)) + '</span></div>').join('') : '<div class="empty">Aucun flux récent.</div>') + '</div>' +
         '<h3>Revenu · 60 dernières secondes</h3><canvas class="chart" id="bChart"></canvas>' +
         (top ? '<h3>Meilleures ventes</h3><div class="chip-row">' + top + '</div>' : '') +
         (b.type === 'boulangerie' ? '<h3>Commande spéciale</h3>' + (b.order
@@ -865,6 +913,7 @@ const UI = (() => {
       if (b.type === 'boulangerie') {
         body = '<h3>Matières premières</h3>' +
           Object.entries(DATA.bizTypes.boulangerie.mats).map(([id, m]) => '<div class="rowline"><div><div class="lbl">' + esc(m.n) + '</div><div class="det">Stock : <b class="mono">' + Math.floor(b.mats[id] || 0) + '</b> · ' + eur(m.p) + '/unité</div></div><div class="btn-row"><button class="btn btn-sm" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyMat" data-b="' + i + '" data-m="' + id + '" data-q="50">+50</button></div></div>').join('') +
+          '<div class="m-hint" style="margin:10px 0">🥀 Pertes de fraîcheur cumulées : <b>' + Math.floor(b.spoil || 0) + '</b> — la Chambre froide (Améliorations) les réduit de 50 %/niveau. Créneau actuel : ' + curSlot().n + ' (affluence ×' + curSlot().m + ').</div>' +
           '<h3>Recettes & production</h3>' + DATA.bizTypes.boulangerie.prods.map(p => {
             const ing = Object.entries(p.in).map(([m, q]) => q + '× ' + DATA.bizTypes.boulangerie.mats[m].n).join(', ');
             return '<div class="rowline"><div><div class="lbl">' + esc(p.n) + ' ' + priceAdvice(b, p) + '</div><div class="det">' + esc(ing) + ' · stock <b class="mono">' + Math.floor(b.stock[p.id] || 0) + '</b> · vendus ' + Math.floor(b.counters[p.id] || 0) + '</div></div>' +
@@ -873,6 +922,11 @@ const UI = (() => {
           }).join('');
       } else if (b.type === 'magasin') {
         body = '<div class="biz-chips">' + (perk(b, 'autoRestock') ? '<span class="chip green">Réassort automatique actif</span>' : '<span class="chip">Réassort manuel</span>') + '</div>' +
+          '<h3>Rayon épicerie (ventes aux autres joueurs)</h3>' +
+          '<div class="rowline"><div><div class="lbl">Marge appliquée</div><div class="det">Prix joueur = prix de base × (1 + marge). Visible dans leurs Courses.</div></div>' +
+          '<div class="btn-row"><button class="btn btn-sm" data-act="setMargin" data-b="' + i + '" data-v="-0.05">−</button><span class="money">' + Math.round(num(b.grocery ? b.grocery.margin : 0.1, 0.1) * 100) + ' %</span><button class="btn btn-sm" data-act="setMargin" data-b="' + i + '" data-v="0.05">+</button></div></div>' +
+          '<div class="rowline"><div><div class="lbl">Stock du rayon</div><div class="det">' + Math.floor(b.grocery ? b.grocery.stock : 0) + ' unités · réassort 2,20 €/u' + (upLvl(b, 'fourn') ? ' (−12 % contrat)' : '') + ' · vols cumulés : ' + Math.floor(b.theft || 0) + '</div></div>' +
+          '<div class="btn-row"><button class="btn btn-sm" data-act="restockGrocery" data-b="' + i + '" data-q="50">+50</button><button class="btn btn-sm btn-primary" data-act="restockGrocery" data-b="' + i + '" data-q="200">+200</button></div></div>' +
           '<h3>Rayons</h3>' + DATA.bizTypes.magasin.prods.map(p => '<div class="rowline"><div><div class="lbl">' + esc(p.n) + ' ' + priceAdvice(b, p) + '</div><div class="det">Grossiste ' + eur(p.cost) + ' · stock <b class="mono">' + Math.floor(b.stock[p.id] || 0) + '</b> · vendus ' + Math.floor(b.counters[p.id] || 0) + '</div></div>' +
           '<div class="btn-row"><button class="btn btn-sm" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="10">+10</button><button class="btn btn-sm btn-primary" data-act="buyStock" data-b="' + i + '" data-p="' + p.id + '" data-q="50">+50</button>' +
           '<span class="price-ctl"><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="-0.1">−</button><span class="money">' + eur(b.prices[p.id]) + '</span><button class="btn btn-sm" data-act="priceAdj" data-b="' + i + '" data-p="' + p.id + '" data-v="0.1">+</button></span></div></div>').join('');
@@ -1006,6 +1060,7 @@ const UI = (() => {
       '<div class="wallet-hint"> Cliquez sur une carte : elle s’insère dans le terminal 3D pour réaliser vos opérations.</div>';
   }
 
+  /* ═══════════ DISTRIBUTEUR AUTOMATIQUE HEXAPAY (GAB) ═══════════ */
   function termScreenHTML() {
     const which = term.which;
     const frozen = cardFrozen(which === 'livret' ? 'livret' : 'cb');
@@ -1013,57 +1068,74 @@ const UI = (() => {
     const bal = which === 'livret' ? G.bank.livret : G.bank.compte;
     if (frozen) {
       return '<div class="ts-head warn">❄ CARTE GELÉE</div>' +
-        '<div class="ts-body">Les opérations sont suspendues pour cette carte.</div>' +
-        '<div class="ts-grid"><button class="ts-btn ok" data-term="freeze">🔥 Dégeler la carte</button>' +
+        '<div class="ts-body">Opérations suspendues pour cette carte.</div>' +
+        '<div class="ts-grid"><button class="ts-btn ok" data-term="freeze">🔥 Dégeler</button>' +
         '<button class="ts-btn" data-term="eject">⏏ Éjecter</button></div>' +
         '<div class="ts-status" id="termStatus">Authentification refusée.</div>';
     }
+    const bufVal = ((parseInt(term.buffer || '0', 10) || 0) / 100);
     const rows = [];
     if (which !== 'livret') {
       rows.push('<button class="ts-btn" data-term="act" data-from="cash" data-to="compte">🪙 Dépôt espèces</button>');
-      rows.push('<button class="ts-btn" data-term="act" data-from="compte" data-to="cash">💵 Retrait DAB</button>');
+      rows.push('<button class="ts-btn" data-term="act" data-from="compte" data-to="cash">💵 Retrait billets</button>');
     }
-    rows.push('<button class="ts-btn" data-term="act" data-from="compte" data-to="livret">📈 Compte → Livret A</button>');
-    rows.push('<button class="ts-btn" data-term="act" data-from="livret" data-to="compte">📉 Livret A → compte</button>');
-    if (which !== 'livret') rows.push('<button class="ts-btn" data-term="sendform">💸 Envoyer à un joueur</button>');
-    rows.push('<button class="ts-btn" data-term="statement">📜 Relevé d’opérations</button>');
-    rows.push('<button class="ts-btn" data-term="dues">📅 Échéances mensuelles</button>');
-    return '<div class="ts-head">' + (which === 'livret' ? '🔴' : G.bank.cardPremium ? '⚫' : '🔵') + ' ' + esc(brand) + ' <span class="ts-bal">' + eur(bal) + '</span></div>' +
-      '<div class="ts-sub">' + esc(G.bank.bankName || 'Banque') + ' · titulaire ' + esc(G.name) + ' · plafond ' + eur(cardPlafond()) + '/op</div>' +
-      '<label class="ts-amt">Montant (€)<input id="termAmt" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>' +
+    rows.push('<button class="ts-btn" data-term="act" data-from="compte" data-to="livret">📈 → Livret A</button>');
+    rows.push('<button class="ts-btn" data-term="act" data-from="livret" data-to="compte">📉 Livret →</button>');
+    if (which !== 'livret') rows.push('<button class="ts-btn" data-term="sendform">💸 Envoyer (taxe 5 %)</button>');
+    rows.push('<button class="ts-btn" data-term="statement">📜 Relevé</button>');
+    rows.push('<button class="ts-btn" data-term="dues">📅 Échéances</button>');
+    rows.push('<button class="ts-btn" data-term="plafond">🛡 Plafond</button>');
+    return '<div class="ts-head">' + (which === 'livret' ? '🔴' : G.bank.cardPremium ? '⚫' : '🔵') + ' ' + esc(brand) + ' <span class="ts-bal" data-bal="' + (which === 'livret' ? 'livret' : 'cb') + '">' + eur(bal) + '</span></div>' +
+      '<div class="ts-sub">' + esc(G.bank.bankName || 'Banque') + ' · ' + esc(G.name) + ' · plafond ' + eur(cardPlafond()) + '/op</div>' +
+      '<div class="ts-amt">MONTANT SAISI<span class="ts-buffer" id="termBuf">' + eur(bufVal) + '<i class="ts-caret"></i></span></div>' +
+      '<input id="termAmt" type="hidden" value="' + bufVal + '">' +
       '<div class="ts-grid">' + rows.join('') + '</div>' +
-      '<div class="ts-status" id="termStatus">Prêt. Sélectionnez une opération.</div>';
+      '<div class="ts-status" id="termStatus">Composez un montant au clavier, puis choisissez une opération.</div>';
   }
   function termRefresh() {
     if (!term) return;
-    const scr = term.el.querySelector('.term-screen');
-    if (scr && term.inserted) {
-      const amt = (document.getElementById('termAmt') || {}).value || '';
-      scr.innerHTML = termScreenHTML();
-      const ni = document.getElementById('termAmt');
-      if (ni && amt) ni.value = amt;
-    }
+    const scr = term.el.querySelector('.atm-screen');
+    if (scr && term.inserted) scr.innerHTML = termScreenHTML();
   }
   function termReceipt(label, amt) {
     if (!term || !term.el) return;
     term.lastReceipt = { label, amt, t: Date.now(), code: Math.floor(100000 + Math.random() * 899999) };
-    const slot = term.el.querySelector('.term-receipt');
+    const slot = term.el.querySelector('.atm-printer');
     if (!slot) return;
     const r = document.createElement('div');
-    r.className = 'receipt';
-    r.innerHTML = '<div class="rc-brand">HEXAPAY T-800</div><div class="rc-line">' + esc(label) + '</div>' +
+    r.className = 'receipt atm-receipt';
+    r.innerHTML = '<div class="rc-brand">HEXAPAY GAB</div><div class="rc-line">' + esc(label) + '</div>' +
       '<div class="rc-amt">' + eur(amt) + '</div>' +
       '<div class="rc-line dim2">' + new Date().toLocaleString('fr-FR') + ' · AUTH ' + term.lastReceipt.code + '</div>' +
       '<div class="rc-line dim2">MERCI DE VOTRE CONFIANCE</div>';
-    slot.innerHTML = '';
     slot.appendChild(r);
-    setTimeout(() => { r.classList.add('fade'); setTimeout(() => r.remove(), 700); }, 4200);
+    FX.sound('craft');
+    setTimeout(() => { r.classList.add('fade'); setTimeout(() => r.remove(), 700); }, 4500);
     const st = term.el.querySelector('#termStatus');
     if (st) { st.textContent = '✓ Opération autorisée — ' + label + ' · ' + eur(amt); st.className = 'ts-status ok'; }
+    /* retrait : billets qui sortent du tiroir */
+    if (/liquide|billets|espèces|retrait/i.test(label)) termCashOut();
+  }
+  function termCashOut() {
+    if (!term || !term.el) return;
+    const tray = term.el.querySelector('.atm-cash');
+    if (!tray) return;
+    tray.classList.add('open');
+    for (let i = 0; i < 6; i++) {
+      const b = document.createElement('i');
+      b.className = 'atm-bill';
+      b.style.animationDelay = (i * 90) + 'ms';
+      b.textContent = '€';
+      tray.appendChild(b);
+      setTimeout(() => b.remove(), 2200);
+    }
+    FX.sound('cash');
+    setTimeout(() => tray.classList.remove('open'), 2000);
   }
   function termRender(view) {
     if (!term) return;
-    const scr = term.el.querySelector('.term-screen');
+    term.view = view;
+    const scr = term.el.querySelector('.atm-screen');
     if (!scr) return;
     if (view === 'statement') {
       const rows = (G.journal || []).slice(0, 10).map(j => '<div class="ts-row"><span class="dim2">' + new Date(j.t).toLocaleTimeString('fr-FR') + '</span><span style="flex:1">' + esc(j.label) + '</span><span class="' + (j.amt < 0 ? 'negx' : 'pos') + '">' + (j.amt >= 0 ? '+' : '−') + eur(Math.abs(j.amt)) + '</span></div>').join('') || '<div class="ts-body">Aucune opération.</div>';
@@ -1082,10 +1154,12 @@ const UI = (() => {
         '</div><div class="ts-grid"><button class="ts-btn" data-term="menu">← Menu</button><button class="ts-btn" data-term="eject">⏏ Éjecter</button></div>';
     } else if (view === 'sendform') {
       scr.innerHTML = '<div class="ts-head">💸 ENVOI JOUEUR</div>' +
-        '<label class="ts-amt">Pseudo<input id="termTo" autocomplete="off" placeholder="Pseudo du destinataire"></label>' +
-        '<label class="ts-amt">Montant (€)<input id="termAmt" inputmode="decimal" autocomplete="off" placeholder="0,00"></label>' +
+        '<label class="ts-amt">PSEUDO<input id="termTo" autocomplete="off" placeholder="Pseudo"></label>' +
+        '<div class="ts-amt">MONTANT SAISI<span class="ts-buffer" id="termBuf">' + eur(((parseInt(term.buffer || '0', 10) || 0) / 100)) + '<i class="ts-caret"></i></span></div>' +
+        '<input id="termAmt" type="hidden" value="' + ((parseInt(term.buffer || '0', 10) || 0) / 100) + '">' +
+        '<div class="ts-body">Taxe de 5 % prélevée en plus du montant envoyé.</div>' +
         '<div class="ts-grid"><button class="ts-btn ok" data-term="send">Envoyer</button><button class="ts-btn" data-term="menu">← Menu</button></div>' +
-        '<div class="ts-status" id="termStatus">Plafond : ' + eur(cardPlafond()) + ' / opération.</div>';
+        '<div class="ts-status" id="termStatus">Composez le montant au clavier du GAB.</div>';
     } else if (view === 'plafond') {
       scr.innerHTML = '<div class="ts-head">🛡 PLAFOND CARTE</div><div class="ts-body">Actuel : ' + eur(cardPlafond()) + ' / opération</div>' +
         '<div class="ts-grid">' + [500, 1000, 2000, 5000, 10000].map(v => '<button class="ts-btn" data-term="plafondSet" data-v="' + v + '">' + eur0(v) + '</button>').join('') + '</div>' +
@@ -1098,122 +1172,157 @@ const UI = (() => {
   function openTerminal(which) {
     if (!G || !G.bank.bankId) return toast('Ouvrez d’abord un compte bancaire.', 'warn');
     if (term) return;
-    which = which === 'livret' ? 'livret' : 'cb';
     FX.sound('click');
+    which = which === 'livret' ? 'livret' : 'cb';
     const ov = document.createElement('div');
-    ov.className = 'term-ov';
+    ov.className = 'atm-ov';
+    const skin = G.bank.cardPremium ? 'skin-black' : 'skin-blue';
     ov.innerHTML =
-      '<div class="term-back"></div>' +
-      '<div class="term-scene">' +
-        '<div class="term-device">' +
-          '<div class="term-top"><span class="term-brand">HEXAPAY&nbsp;T-800</span><span class="term-led"></span></div>' +
-          '<div class="term-slot"><div class="term-slot-lip"></div></div>' +
-          '<div class="term-screen off"></div>' +
-          '<div class="term-keypad">' +
-            '<button class="tkey" data-term="menu" title="Menu">☰</button>' +
-            '<button class="tkey" data-term="receiptLast" title="Dernier ticket">🧾</button>' +
-            '<button class="tkey" data-term="plafond" title="Plafond">🛡</button>' +
-            '<button class="tkey cold" data-term="freeze" title="Geler / dégeler la carte">❄</button>' +
-            '<button class="tkey" data-term="statement" title="Relevé">📜</button>' +
-            '<button class="tkey danger" data-term="eject" title="Éjecter la carte">⏏</button>' +
+      '<div class="atm-back"></div>' +
+      '<div class="atm-scene">' +
+        '<div class="atm">' +
+          '<div class="atm-top"><span class="atm-brand">HEXAPAY · GAB T-800</span><span class="atm-leds"><i></i><i></i><i></i></span></div>' +
+          '<div class="atm-mid">' +
+            '<div class="atm-screen off"></div>' +
+            '<div class="atm-right">' +
+              '<div class="atm-keys">' + ['1','2','3','4','5','6','7','8','9','C','0',''].map(k => '<button class="akey" data-key="' + k + '">' + k + '</button>').join('') + '</div>' +
+              '<div class="atm-fkeys">' +
+                '<button class="fkey" data-term="statement" title="Relevé">📜</button>' +
+                '<button class="fkey cold" data-term="freeze" title="Geler / dégeler">❄</button>' +
+                '<button class="fkey danger" data-term="eject" title="Éjecter la carte">⏏</button>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
-          '<div class="term-receipt"></div>' +
+          '<div class="atm-bottom">' +
+            '<div class="atm-slot" id="atmSlot"><span>CARTE</span></div>' +
+            '<div class="atm-printer"></div>' +
+            '<div class="atm-cash"><span>BILLETS</span></div>' +
+          '</div>' +
         '</div>' +
-        '<div class="term-side"><div class="term-hint" id="termHint">🖱 Saisissez votre carte et approchez-la du lecteur…</div>' +
-        '<div class="term-side-cards" id="termSideCards"></div></div>' +
+        '<div class="atm-card" id="atmCard"><div class="pcard ' + skin + ' nfc-pcard">' +
+          '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + (which === 'livret' ? 'LIVRET A' : 'HEXAPAY') + '</span></div>' +
+          '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
+          '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div></div>' +
+        '</div></div>' +
+        '<div class="atm-hint" id="atmHint">🖱 Saisissez votre carte et <b>insérez-la dans la fente CARTE</b> du distributeur.</div>' +
       '</div>';
     document.body.appendChild(ov);
-    term = { which, el: ov, inserted: false, clone: null, lastReceipt: null };
+    const card = ov.querySelector('#atmCard');
+    const slot = ov.querySelector('#atmSlot');
+    term = { which, el: ov, card, slot, inserted: false, dragging: false, buffer: '', lastReceipt: null };
 
-    // clone 3D de la carte source (FLIP)
-    const srcEl = document.querySelector('[data-card="' + which + '"]');
-    const clone = document.createElement('div');
-    clone.className = 'term-clone-wrap';
-    const skin = which === 'livret' ? 'skin-red' : (G.bank.cardPremium ? 'skin-black' : 'skin-blue');
-    clone.innerHTML = '<div class="pcard ' + skin + ' clone">' + (cardFrozen(which) ? '<div class="pcard-ice">❄ GELÉE</div>' : '') +
-      '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + (which === 'livret' ? 'LIVRET A' : 'HEXAPAY') + '</span></div>' +
-      '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
-      '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div></div></div>';
-    ov.appendChild(clone);
-    term.clone = clone;
-    const slot = ov.querySelector('.term-slot');
-
-    const fly = () => {
-      if (!ov.isConnected || !term || term.el !== ov) return;
+    const home = () => {
       const sr = slot.getBoundingClientRect();
-      clone.classList.add('fly');
-      clone.style.left = (sr.left + sr.width / 2 - 130) + 'px';
-      clone.style.top = (sr.top - 74) + 'px';
-      clone.style.transform = 'scale(.86) rotateY(14deg) rotateX(24deg)';
+      return { x: Math.min(window.innerWidth - 240, sr.right + 90), y: Math.max(20, sr.top - 40) };
     };
-    const insert = () => {
-      if (!ov.isConnected || !term || term.el !== ov) return;
-      clone.style.opacity = ''; // rend la main aux classes CSS (.insert → opacity 0)
-      clone.classList.add('insert');
-      slot.classList.add('glow');
+    const h0 = home();
+    card.style.left = h0.x + 'px'; card.style.top = h0.y + 'px';
+    term.home = h0;
+
+    const insertCard = () => {
+      if (!term || term.inserted) return;
+      const sr = slot.getBoundingClientRect();
+      card.classList.add('inserting');
+      card.style.left = (sr.left + sr.width / 2 - 110) + 'px';
+      card.style.top = (sr.top - 46) + 'px';
       FX.sound('craft');
+      ov.querySelector('.atm-leds').classList.add('busy');
       setTimeout(() => {
-        if (!ov.isConnected || !term || term.el !== ov) return;
-        term.inserted = true;
-        const scr = ov.querySelector('.term-screen');
-        scr.classList.remove('off');
-        scr.classList.add('on');
-        termRender('menu');
-        const hint = el('termHint');
-        if (hint) hint.innerHTML = '✅ Carte authentifiée. Choisissez une opération — le ticket s’imprime à chaque validation.';
-        // mini-portefeuille latéral (autres cartes accessibles)
-        const side = el('termSideCards');
-        if (side) side.innerHTML = walletHTML();
-      }, reducedMotion() ? 0 : 480);
+        if (!term) return;
+        card.classList.add('inserted');
+        slot.classList.add('glow');
+        setTimeout(() => {
+          if (!term) return;
+          term.inserted = true;
+          const scr = ov.querySelector('.atm-screen');
+          scr.classList.remove('off'); scr.classList.add('on');
+          ov.querySelector('.atm-leds').classList.remove('busy');
+          termRender('menu');
+          const hint = ov.querySelector('#atmHint');
+          if (hint) hint.innerHTML = '✅ Carte authentifiée. Composez un montant au clavier, puis choisissez une opération. Le ticket s’imprime à chaque validation.';
+          FX.sound('nfcOk');
+        }, reducedMotion() ? 0 : 500);
+      }, reducedMotion() ? 0 : 420);
     };
-    if (srcEl && !reducedMotion()) {
-      const r = srcEl.getBoundingClientRect();
-      clone.style.left = r.left + 'px';
-      clone.style.top = r.top + 'px';
-      clone.style.opacity = '1';
-      srcEl.style.visibility = 'hidden';
-      requestAnimationFrame(() => requestAnimationFrame(fly));
-      setTimeout(insert, reducedMotion() ? 0 : 620);
-    } else {
-      if (srcEl) srcEl.style.visibility = 'hidden';
-      clone.style.opacity = '0';
-      insert();
+    term.insertCard = insertCard;
+
+    if (!reducedMotion()) {
+      let ox = 0, oy = 0;
+      const onMove = e => {
+        if (!term || !term.dragging || term.inserted) return;
+        card.style.left = (e.clientX - ox) + 'px';
+        card.style.top = (e.clientY - oy) + 'px';
+        const sr = slot.getBoundingClientRect();
+        const over = e.clientX > sr.left - 16 && e.clientX < sr.right + 16 && e.clientY > sr.top - 16 && e.clientY < sr.bottom + 16;
+        slot.classList.toggle('hover', over);
+      };
+      const onUp = e => {
+        if (!term || !term.dragging || term.inserted) return;
+        term.dragging = false;
+        card.classList.remove('drag');
+        slot.classList.remove('hover');
+        const sr = slot.getBoundingClientRect();
+        if (e.clientX > sr.left - 16 && e.clientX < sr.right + 16 && e.clientY > sr.top - 16 && e.clientY < sr.bottom + 16) insertCard();
+        else { card.classList.add('home'); card.style.left = term.home.x + 'px'; card.style.top = term.home.y + 'px'; setTimeout(() => card && card.classList.remove('home'), 450); }
+      };
+      card.addEventListener('pointerdown', e => {
+        if (!term || term.inserted) return;
+        term.dragging = true;
+        const r = card.getBoundingClientRect();
+        ox = e.clientX - r.left; oy = e.clientY - r.top;
+        card.classList.add('drag');
+        e.preventDefault();
+      });
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      term.clean = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
     }
+    /* repli accessible : cliquer la fente insère la carte */
+    slot.addEventListener('click', () => { if (term && !term.inserted) insertCard(); });
   }
 
   function closeTerminal(eject) {
     if (!term) return;
     const t = term; term = null;
-    const srcEl = document.querySelector('[data-card="' + t.which + '"]');
+    if (t.clean) t.clean();
     const finish = () => {
+      const srcEl = document.querySelector('[data-card="' + t.which + '"]');
       if (srcEl) srcEl.style.visibility = '';
       t.el.classList.add('out');
       setTimeout(() => t.el.remove(), 380);
       FX.sound('back');
       refresh(true);
     };
-    if (eject && t.clone && !reducedMotion()) {
-      t.clone.classList.remove('insert');
-      t.clone.classList.add('ejecting');
-      const slot = t.el.querySelector('.term-slot');
+    if (eject && t.inserted && !reducedMotion()) {
+      const card = t.card, slot = t.slot;
       slot && slot.classList.remove('glow');
+      card.classList.remove('inserted');
+      card.classList.add('ejecting');
+      const sr = slot ? slot.getBoundingClientRect() : null;
+      if (sr) { card.style.left = (sr.left + sr.width / 2 - 110) + 'px'; card.style.top = (sr.top - 60) + 'px'; }
       FX.sound('craft');
       setTimeout(() => {
-        if (srcEl) {
-          const r = srcEl.getBoundingClientRect();
-          t.clone.classList.remove('fly');
-          t.clone.classList.add('fly');
-          t.clone.style.left = r.left + 'px';
-          t.clone.style.top = r.top + 'px';
-          t.clone.style.transform = 'none';
-        }
-        setTimeout(finish, 520);
-      }, 260);
+        card.classList.remove('ejecting');
+        card.classList.add('home');
+        card.style.left = t.home.x + 'px'; card.style.top = t.home.y + 'px';
+        setTimeout(finish, 480);
+      }, 320);
     } else finish();
   }
 
-  /* délégation des touches du terminal */
+  function termKey(k) {
+    if (!term || !term.inserted) return;
+    FX.sound('click');
+    if (k === 'C') term.buffer = '';
+    else if (k === '') term.buffer = term.buffer.slice(0, -1);
+    else if ((term.buffer || '').length < 7) term.buffer = (term.buffer || '') + k;
+    termRender(term.view || 'menu');
+  }
+
+  /* délégation clavier GAB + touches du terminal */
   document.addEventListener('click', e => {
+    const kb = e.target.closest('[data-key]');
+    if (kb && term) { e.preventDefault(); e.stopPropagation(); termKey(kb.dataset.key); return; }
     const b = e.target.closest('[data-term]');
     if (!b || !term) return;
     e.preventDefault(); e.stopPropagation();
