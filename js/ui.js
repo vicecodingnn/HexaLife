@@ -480,7 +480,17 @@ const UI = (() => {
     host.innerHTML = skeleton(2);
     DB.authFetch('/api/banks').then(j => {
       if (!host.isConnected) return;
-      const list = ((j && j.banks) || []).filter(b => b.owner !== G.name);
+      const all = (j && j.banks) || [];
+      if (G.bank.bankId && isPlayerBank(G.bank.bankId)) {
+        const mineB = all.find(x => x.id === G.bank.bankId);
+        if (mineB) {
+          const changed = (num(G.bank.playerRate, 0) !== num(mineB.livret, 0)) || (!!G.bank.premiumClient !== !!mineB.premium);
+          G.bank.playerRate = num(mineB.livret, 2, 0, 5);
+          G.bank.premiumClient = !!mineB.premium;
+          if (changed && T.tab === 'banque') render(true);
+        }
+      }
+      const list = all.filter(b => b.owner !== G.name);
       host.innerHTML = list.length ? list.map(b =>
         '<div class="bank-offer" data-act="bankDetails" data-id="' + esc(b.id) + '" data-name="' + esc(b.name) + '" data-rate="' + num(b.livret, 2, 0, 5) + '" data-owner="' + esc(b.owner) + '" data-accounts="' + Math.floor(num(b.accounts, 0, 0)) + '">' +
         '<div class="bo-name">🏦 ' + esc(b.name) + '</div><div class="bo-det">par ' + esc(b.owner) + ' · Livret ' + num(b.livret, 2, 0, 5) + ' % · ' + Math.floor(num(b.accounts, 0, 0)) + ' comptes</div></div>'
@@ -739,6 +749,16 @@ const UI = (() => {
       if (T.tab === 'entreprises' && T.bizTab === 'b2b') render(true);
     }).catch(() => { T.b2bCache = { incoming: [], outgoing: [], active: [], partners: [] }; });
   }
+  function bankTips() {
+    const tips = [];
+    if (G.bank.livret < G.bank.compte * 0.2 && G.bank.compte > 1000) tips.push('💡 Placez une partie de votre compte sur le Livret A : ' + bankRate() + ' %/an sans risque.');
+    if (G.bank.loans.length) { const L = G.bank.loans[0]; tips.push('💡 Votre crédit ' + esc(L.n) + ' coûte ' + eur(L.mens) + '/mois : le solder tôt réduit les intérêts.'); }
+    if (!G.insurances.length) tips.push('💡 Sans mutuelle, vous payez 100 % des frais de santé : une couverture rembourse jusqu’à 85 %.');
+    if (G.bank.premiumClient) tips.push('💳 Carte Premium active : 0 % de frais sur vos transferts et +0,5 % de Livret.');
+    if (G.cash > 2000) tips.push('💔 Dormir avec du liquide ne rapporte rien : déposez-le sur votre compte.');
+    if (!tips.length) tips.push('✓ Votre situation bancaire est optimale pour le moment.');
+    return tips.map(t => '<div class="bf-item in"><span class="bf-l">' + t + '</span></div>').join('');
+  }
   function loadShops() {
     const now = Date.now();
     if (T.shopsAt && now - T.shopsAt < 15000) return; // anti boucle de re-render
@@ -906,6 +926,12 @@ const UI = (() => {
           (b.type === 'magasin' && b.grocery ? '<span class="chip">🛒 Rayon joueurs : stock ' + b.grocery.stock + ' · marge ' + Math.round(b.grocery.margin * 100) + ' %</span>' : '') + '</div>' : '') +
         (b.type === 'banque' ? '<div class="biz-chips"><span class="chip">🏧 GAB niv ' + upLvl(b, 'gab') + '</span><span class="chip ' + (upLvl(b, 'risque') > 0 ? 'red' : '') + '">⚠ Crédits risqués niv ' + upLvl(b, 'risque') + '</span></div>' : '') +
         (b.type === 'immobilier' ? '<div class="biz-chips"><span class="chip gold">🔨 Rénovation niv ' + upLvl(b, 'reno') + ' (+' + (upLvl(b, 'reno') * 20) + ' % commissions)</span></div>' : '') +
+        '<h3>Gamme de qualité</h3><div class="gamme-row">' + Object.entries(DATA.gammes[b.type] || {}).map(([g, def]) =>
+          '<button class="gamme-card' + ((b.gamme || 'standard') === g ? ' on' : '') + '" data-act="setGamme" data-b="' + i + '" data-g="' + g + '">' +
+          '<div class="g-n">' + esc(def.n) + '</div><div class="g-d">' + esc(def.d) + '</div>' +
+          '<div class="g-c">' + (g === 'standard' ? 'Incluse' : eur(def.cost)) + '</div></button>').join('') + '</div>' +
+        (b.premiumCard ? '<div class="premium-flag">💳 Carte Premium active : vos clients ne paient aucun frais de transfert et gagnent +0,5 % de Livret.</div>' : '') +
+        (b.type === 'banque' ? '<h3>Guichet</h3><div class="queue-row"><i></i><i></i><i></i><i></i><i></i></div><div class="det" style="margin-bottom:10px">File de clients en temps réel — la Carte Premium accélère l’arrivée des comptes.</div>' : '') +
         '<h3>Flux en direct</h3><div class="biz-feed">' + ((b.feed && b.feed.length) ? b.feed.slice().reverse().map(x => '<div class="bf-item ' + (x.a >= 0 ? 'in' : 'out') + '"><span class="bf-l">' + esc(x.l) + '</span><span class="bf-a">' + (x.a >= 0 ? '+' : '−') + eur(Math.abs(x.a)) + '</span></div>').join('') : '<div class="empty">Aucun flux récent.</div>') + '</div>' +
         '<h3>Revenu · 60 dernières secondes</h3><canvas class="chart" id="bChart"></canvas>' +
         (top ? '<h3>Meilleures ventes</h3><div class="chip-row">' + top + '</div>' : '') +
@@ -1061,6 +1087,11 @@ const UI = (() => {
       '<div class="panel"><h2>Crédits</h2><label class="m-field">Montant du crédit (€)<div class="btn-row" style="margin-top:6px"><input type="text" inputmode="numeric" class="mini amt-input" id="loanAmt" placeholder="10 000" autocomplete="off">' +
       '<button class="btn btn-sm" data-act="setBankAmt" data-v="5000" data-of="loan">5 k€</button><button class="btn btn-sm" data-act="setBankAmt" data-v="50000" data-of="loan">50 k€</button></div></label>' +
       '<div class="btn-row" style="margin-top:10px;flex-wrap:wrap">' + DATA.loans.map(l => '<button class="btn btn-sm" data-act="loanTake" data-t="' + l.id + '">' + l.n + ' · ' + l.rate + ' %</button>').join('') + '</div><h3>En cours</h3>' + loans + '</div></div>' +
+      '<div class="grid2" style="margin-top:18px"><div class="panel"><h2>Conseiller financier</h2>' + bankTips() + '</div>' +
+      '<div class="panel"><h2>Votre carte & frais</h2>' +
+      '<div class="rowline" style="border:0"><div><div class="lbl">Transferts entre joueurs</div><div class="det">Taxe prélevée côté serveur, impossible à contourner.</div></div>' +
+      '<span class="chip ' + (G.bank.premiumClient ? 'green' : 'gold') + '">' + (G.bank.premiumClient ? '0 % (Carte Premium)' : '5 % (min 1 €)') + '</span></div>' +
+      '<div class="rowline" style="border:0"><div><div class="lbl">Livret A</div><div class="det">' + (G.bank.premiumClient ? 'Bonus Carte Premium inclus : ' : '') + bankRate() + ' %/an</div></div><span class="money">' + eur(G.bank.livret) + '</span></div></div></div>' +
       '<div class="panel"><h2>Relevé de compte</h2>' +
       '<div class="jf-row"><button class="jf-btn' + (T.journalF === 'all' ? ' active' : '') + '" data-act="journalF" data-f="all">Tout</button>' +
       '<button class="jf-btn' + (T.journalF === 'in' ? ' active' : '') + '" data-act="journalF" data-f="in">Entrées</button>' +
@@ -1104,7 +1135,7 @@ const UI = (() => {
   function walletHTML() {
     if (!G.bank.bankId) return '';
     return '<div class="wallet">' +
-      pcard('cb', G.bank.cardPremium ? 'skin-black' : 'skin-blue', G.bank.bankName || 'Banque', G.bank.compte, cardFrozen('cb'), G.bank.cardPremium ? 'HEXAPAY PREMIUM' : 'HEXAPAY') +
+      pcard('cb', (G.bank.cardPremium || G.bank.premiumClient) ? 'skin-black' : 'skin-blue', (G.bank.bankName || 'Banque') + (G.bank.premiumClient ? ' · 💳 0 % frais' : ''), G.bank.compte, cardFrozen('cb'), (G.bank.cardPremium || G.bank.premiumClient) ? 'HEXAPAY PREMIUM' : 'HEXAPAY') +
       pcard('livret', 'skin-red', 'Livret A · ' + bankRate() + ' %/an', G.bank.livret, cardFrozen('livret'), 'LIVRET A') +
       (!G.bank.cardPremium ? lockedCard() : '') +
       '</div>' +
@@ -1927,6 +1958,110 @@ const UI = (() => {
     }
   });
 
+  /* ═══════════ ASSISTANT PERSONNEL (bulle contextuelle, débloquable 30 €) ═══════════ */
+  let assistOpen = false;
+  function assistMount(force) {
+    if (!G) return;
+    if (force) assistOpen = true;
+    if (!document.getElementById('assistBtn')) {
+      const b = document.createElement('button');
+      b.id = 'assistBtn'; b.className = 'assist-btn';
+      b.title = 'Assistant personnel';
+      b.setAttribute('aria-label', 'Assistant personnel');
+      b.innerHTML = '<span class="ab-orb">✦</span><span class="ab-ping"></span>';
+      b.addEventListener('click', () => { assistOpen = !assistOpen; assistRender(); FX.sound('click'); });
+      document.body.appendChild(b);
+      const p = document.createElement('div');
+      p.id = 'assistPanel'; p.className = 'assist-panel';
+      document.body.appendChild(p);
+    }
+    assistRender();
+  }
+  function assistContext() {
+    const out = [];
+    if (G.tuto >= 0) out.push('Terminer le tutoriel guidé (+100 € à la fin).');
+    if (!G.jobs.length && !G.training) out.push('Signer un contrat ou suivre une formation (onglet Emploi).');
+    if (G.vitals.faim < 40) out.push('Manger : votre jauge de faim est basse (Inventaire).');
+    if (G.vitals.soif < 40) out.push('Boire : votre jauge de soif est basse (Inventaire).');
+    if (!G.bank.bankId) out.push('Ouvrir un compte bancaire (onglet Banque).');
+    else if (G.bank.compte > 3000 && G.bank.livret < 500) out.push('Placer une partie du compte sur le Livret A.');
+    (G.biz || []).forEach(b => { if (b.emps.length === 0) out.push('« ' + b.name + ' » est à l’arrêt : recruter un salarié (RH).'); });
+    if (!hasShelter()) out.push('Se loger : sans domicile, vos jauges baissent 1,5× plus vite.');
+    if (canClaimDaily()) out.push('Réclamer la récompense quotidienne (Accueil).');
+    if (G.ill.unlocked && G.ill.heat > 60) out.push('Chaleur élevée au marché noir : pot-de-vin ou profil bas.');
+    if (!out.length) out.push('Tout roule ! Explorez : gammes de qualité, postes de direction, contrats B2B…');
+    return out.slice(0, 4);
+  }
+  function assistAnswer(q) {
+    q = String(q || '').toLowerCase();
+    let best = null, bestScore = 0;
+    (DATA.assist || []).forEach(a => {
+      let sc = 0;
+      (a.k || []).forEach(k => { if (q.indexOf(k) >= 0) sc += k.length; });
+      if (sc > bestScore) { bestScore = sc; best = a; }
+    });
+    return best ? best.r : 'Je n’ai pas trouvé de réponse précise. Essayez : argent, banque, entreprise, impôts, B2B, santé, météo, gamme, loto, stripe… Ou cliquez mes suggestions ci-dessous.';
+  }
+  function pushAssist(who, txt) {
+    const body = document.getElementById('apBody'); if (!body) return;
+    const m = document.createElement('div');
+    m.className = 'ap-msg ' + who;
+    body.appendChild(m);
+    if (who === 'bot') {
+      m.innerHTML = '<span class="ap-dots"><i></i><i></i><i></i></span>';
+      setTimeout(() => {
+        m.textContent = '';
+        let i = 0;
+        const tv = setInterval(() => {
+          i += 3; m.textContent = txt.slice(0, i);
+          body.scrollTop = body.scrollHeight;
+          if (i >= txt.length) clearInterval(tv);
+        }, 12);
+      }, 550);
+    } else m.textContent = txt;
+    body.scrollTop = body.scrollHeight;
+  }
+  function assistSend() {
+    const qi = document.getElementById('apQ');
+    const q = (qi && qi.value) || '';
+    if (!q.trim()) return;
+    pushAssist('user', q);
+    if (qi) qi.value = '';
+    setTimeout(() => pushAssist('bot', assistAnswer(q)), 450);
+  }
+  function assistRender() {
+    const p = document.getElementById('assistPanel'); const b = document.getElementById('assistBtn');
+    if (!p || !b || !G) return;
+    b.classList.toggle('locked', !G.assistant);
+    b.classList.toggle('open', assistOpen);
+    const orb = b.querySelector('.ab-orb'); if (orb) orb.textContent = G.assistant ? '✦' : '🔒';
+    if (!assistOpen) { p.classList.remove('open'); return; }
+    p.classList.add('open');
+    if (!G.assistant) {
+      p.innerHTML = '<div class="ap-head"><b>✦ Assistant personnel</b><button class="ap-close" id="apClose" aria-label="Fermer">✕</button></div>' +
+        '<div class="ap-body"><div class="ap-msg bot">Bonjour ! Je serai votre assistant personnel : conseils selon votre situation et réponses à toutes vos questions.</div>' +
+        '<div class="ap-unlock"><div class="ap-price">' + eur(DATA.assistPrice) + '</div>' +
+        '<div class="det">Débloquage définitif, payé en argent fictif.</div>' +
+        '<button class="btn btn-primary btn-block" data-act="assistUnlock" style="margin-top:10px">Débloquer l’assistant</button></div></div>';
+    } else {
+      p.innerHTML = '<div class="ap-head"><b>✦ Assistant</b><button class="ap-close" id="apClose" aria-label="Fermer">✕</button></div>' +
+        '<div class="ap-body" id="apBody"></div>' +
+        '<div class="ap-sugs" id="apSugs">' + assistContext().map(t => '<button class="ap-sug">' + esc(t) + '</button>').join('') + '</div>' +
+        '<div class="ap-input"><input id="apQ" placeholder="Posez votre question…" autocomplete="off"><button id="apSend" class="btn btn-primary btn-sm" aria-label="Envoyer">➤</button></div>';
+      pushAssist('bot', 'Que puis-je faire pour vous ? Mes suggestions du moment sont cliquables juste au-dessus du champ.');
+    }
+    const close = document.getElementById('apClose');
+    if (close) close.addEventListener('click', () => { assistOpen = false; assistRender(); FX.sound('back'); });
+    const send = document.getElementById('apSend');
+    if (send) send.addEventListener('click', assistSend);
+    const qi = document.getElementById('apQ');
+    if (qi) qi.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); assistSend(); } });
+    document.querySelectorAll('.ap-sug').forEach(bt => bt.addEventListener('click', () => {
+      pushAssist('user', bt.textContent);
+      setTimeout(() => pushAssist('bot', assistAnswer(bt.textContent)), 450);
+    }));
+  }
+
   return {
     toast, feed, floatText, pulseVital, moneyFx, cardFx, confetti, moneyFly, moneyRain,
     modal, closeModal, flashSave, buildRail, setTab, render, updateTop, tick: tickUI,
@@ -1934,6 +2069,6 @@ const UI = (() => {
     openSendMoney, doSendMoney, openAnnounce, doAnnounce, openAdmin, adminDo,
     openSettings, openHelp, setWeather, reportError, levelUp, achUnlock, eventFx, screenShake,
     loadLeaderboard, xpFx, openTerminal, closeTerminal, termRefresh, termReceipt, walletHTML,
-    nfcPay, nfcClose, nfcForce, updateBalEls
+    nfcPay, nfcClose, nfcForce, updateBalEls, assistMount, assistRender
   };
 })();

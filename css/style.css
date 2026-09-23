@@ -1186,3 +1186,64 @@ table.t tr:nth-child(even) td{background:rgba(255,255,255,.015)}
 .b2b-card:hover{border-color:var(--gold-dk)}
 .b2b-card.offer{border-color:var(--gold-dk);background:linear-gradient(180deg,rgba(232,176,75,.07),var(--panel2));animation:bdgPulse 2.2s ease-in-out infinite}
 .b2b-head{font-size:13px;font-weight:600}
+
+/* ═══════════ v11.8 — Assistant-bulle, gammes, banque vivante ═══════════ */
+#toasts{bottom:96px}
+.assist-btn{position:fixed;right:22px;bottom:22px;z-index:126;width:56px;height:56px;border-radius:50%;border:1px solid var(--gold-dk);
+  background:radial-gradient(circle at 32% 30%, #2a3a46, #16222b 70%);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 10px 26px rgba(0,0,0,.5), 0 0 0 0 rgba(232,176,75,.4);transition:transform .25s var(--ease),box-shadow .25s}
+.assist-btn:hover{transform:scale(1.08) rotate(6deg)}
+.assist-btn .ab-orb{font-size:22px;color:var(--gold);text-shadow:0 0 14px rgba(232,176,75,.7);animation:orbBreath 2.6s ease-in-out infinite}
+.assist-btn.locked .ab-orb{font-size:17px;color:var(--mut);text-shadow:none}
+.assist-btn .ab-ping{position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(232,176,75,.5);opacity:0;animation:abPing 2.8s ease-out infinite}
+.assist-btn.locked .ab-ping{border-color:rgba(139,161,172,.35)}
+.assist-btn.open .ab-ping{animation:none;opacity:0}
+@keyframes abPing{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.5);opacity:0}}
+@keyframes orbBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.assist-panel{position:fixed;right:22px;bottom:88px;z-index:126;width:min(360px,92vw);max-height:min(560px,70vh);
+  display:flex;flex-direction:column;border-radius:var(--r3);border:1px solid var(--gold-dk);
+  background:linear-gradient(180deg,rgba(22,32,40,.98),rgba(15,23,29,.98));backdrop-filter:blur(10px);
+  box-shadow:0 24px 60px rgba(0,0,0,.6), 0 0 30px rgba(232,176,75,.12);
+  transform:translateY(16px) scale(.94);transform-origin:bottom right;opacity:0;pointer-events:none;
+  transition:transform .3s cubic-bezier(.2,1.3,.4,1),opacity .22s ease}
+.assist-panel.open{transform:none;opacity:1;pointer-events:auto}
+.ap-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);color:var(--gold);font-size:13.5px}
+.ap-close{border:0;background:transparent;color:var(--mut);cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px;transition:all .15s}
+.ap-close:hover{color:var(--ink);background:var(--panel3)}
+.ap-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+.ap-msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:12.5px;line-height:1.5;animation:apMsg .35s var(--ease) both}
+.ap-msg.bot{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);border-bottom-left-radius:3px}
+.ap-msg.user{align-self:flex-end;background:rgba(232,176,75,.14);border:1px solid var(--gold-dk);border-bottom-right-radius:3px;color:var(--ink)}
+@keyframes apMsg{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+.ap-dots{display:inline-flex;gap:4px}
+.ap-dots i{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:apDot 1s ease-in-out infinite}
+.ap-dots i:nth-child(2){animation-delay:.15s}.ap-dots i:nth-child(3){animation-delay:.3s}
+@keyframes apDot{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+.ap-unlock{border:1px dashed var(--gold-dk);border-radius:var(--r2);padding:12px;text-align:center;background:rgba(232,176,75,.06);animation:apMsg .4s .1s var(--ease) both}
+.ap-price{font-family:var(--mono);font-size:22px;font-weight:800;color:var(--gold)}
+.ap-sugs{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 10px;max-height:110px;overflow-y:auto}
+.ap-sug{border:1px solid var(--line);background:var(--panel2);color:var(--mut);border-radius:14px;padding:5px 10px;font-size:11px;cursor:pointer;text-align:left;transition:all .15s;animation:apMsg .3s var(--ease) both}
+.ap-sug:hover{border-color:var(--gold-dk);color:var(--ink);transform:translateY(-1px)}
+.ap-input{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.ap-input input{flex:1;background:#0d151a;border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font-size:12.5px}
+.ap-input input:focus{outline:none;border-color:var(--gold)}
+/* gammes */
+.gamme-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:6px}
+.gamme-card{border:1px solid var(--line);border-radius:var(--r2);padding:12px;background:var(--panel2);cursor:pointer;text-align:left;
+  display:flex;flex-direction:column;gap:6px;transition:all .2s var(--ease);animation:empIn .4s var(--ease) both}
+.gamme-card:hover{transform:translateY(-3px);border-color:var(--gold-dk)}
+.gamme-card.on{border-color:var(--gold);background:linear-gradient(180deg,rgba(232,176,75,.1),var(--panel2));box-shadow:0 0 18px rgba(232,176,75,.15)}
+.gamme-card .g-n{font-weight:700;font-size:13px}
+.gamme-card .g-d{font-size:11px;color:var(--mut);line-height:1.45;flex:1}
+.gamme-card .g-c{font-family:var(--mono);font-size:11.5px;color:var(--gold);font-weight:700}
+.premium-flag{border:1px solid var(--gold-dk);background:linear-gradient(90deg,rgba(232,176,75,.14),rgba(232,176,75,.04));border-radius:var(--r2);
+  padding:10px 14px;font-size:12.5px;color:var(--gold);margin:10px 0;animation:stoppedPulse 2.4s ease-in-out infinite}
+/* file de clients animée */
+.queue-row{display:flex;gap:10px;align-items:flex-end;height:44px;margin:6px 0 4px;overflow:hidden}
+.queue-row i{width:14px;height:30px;border-radius:7px 7px 3px 3px;background:linear-gradient(180deg,#3b4c59,#243440);position:relative;animation:queueWalk 3.2s linear infinite}
+.queue-row i::before{content:"";position:absolute;top:-9px;left:2px;width:10px;height:10px;border-radius:50%;background:#465866}
+.queue-row i:nth-child(2){animation-delay:.5s;height:26px}
+.queue-row i:nth-child(3){animation-delay:1s;height:32px}
+.queue-row i:nth-child(4){animation-delay:1.6s;height:28px}
+.queue-row i:nth-child(5){animation-delay:2.2s;height:30px}
+@keyframes queueWalk{0%{transform:translateX(46px);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:translateX(-64px);opacity:0}}

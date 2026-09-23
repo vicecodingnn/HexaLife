@@ -189,12 +189,12 @@ function newGame(name) {
     jobs: [], training: null, diplomas: [],
     inv: {}, cars: [], houses: [], rental: null, insurances: [],
     bank: { bankId: null, bankName: null, playerRate: null, compte: 0, livret: 0, loans: [],
-      cardCb: { plafond: 2000, frozen: false }, cardLivret: { frozen: false }, cardPremium: false },
+      cardCb: { plafond: 2000, frozen: false }, cardLivret: { frozen: false }, cardPremium: false, premiumClient: false },
     biz: [], ill: { unlocked: false, heat: 0, cd: {} },
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
     missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
     journal: [], tuto: 0, skills: {},
-    ach: {}, daily: { lastDay: '', streak: 0 }, b2b: { active: [] },
+    ach: {}, daily: { lastDay: '', streak: 0 }, b2b: { active: [] }, assistant: false,
     market: { mult: {}, until: 0 }, histBal: [], carState: {}, sportCd: 0,
     stats: {
       earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0,
@@ -288,6 +288,7 @@ function sanitize(s) {
     loans: Array.isArray(sb.loans) ? sb.loans.filter(L => L && typeof L === 'object' && num(L.reste, 0) > 0).slice(0, 12)
       .map(L => ({ n: String(L.n || 'Crédit').slice(0, 30), total: num(L.total, 0, 0, 1e13), mens: num(L.mens, 0, 0, 1e10), reste: num(L.reste, 0, 0.01, 1e13) })) : [],
     cardCb: { plafond: num(scb.plafond, 2000, 100, 20000), frozen: !!scb.frozen },
+    premiumClient: !!sb.premiumClient,
     cardLivret: { frozen: !!slv.frozen },
     cardPremium: !!sb.cardPremium
   };
@@ -331,6 +332,7 @@ function sanitize(s) {
     streak: num(s.daily && s.daily.streak, 0, 0, 99999)
   };
 
+  out.assistant = !!s.assistant;
   out.b2b = { active: [] };
   if (s.b2b && Array.isArray(s.b2b.active)) {
     out.b2b.active = s.b2b.active.filter(c => c && typeof c === 'object')
@@ -415,6 +417,8 @@ function sanitizeBiz(b) {
   if (b.order && typeof b.order === 'object' && num(b.order.until, 0) > Date.now() && bt.prods && bt.prods.some(p => p.id === b.order.p)) {
     out.order = { p: b.order.p, pn: String(b.order.pn || '').slice(0, 40), qty: Math.floor(num(b.order.qty, 1, 1, 1000)), reward: num(b.order.reward, 0, 0, 1e10), until: num(b.order.until, 0) };
   }
+  out.gamme = ['eco', 'standard', 'premium'].includes(b.gamme) ? b.gamme : 'standard';
+  out.premiumCard = !!b.premiumCard;
   out.spoil = Math.floor(num(b.spoil, 0, 0, 1e12));
   out.theft = Math.floor(num(b.theft, 0, 0, 1e12));
   out.feed = Array.isArray(b.feed) ? b.feed.filter(x => x && typeof x === 'object').slice(-6)
@@ -497,7 +501,7 @@ function jobNetHourly(h, mode) {
 }
 function bankRate() {
   if (!G.bank.bankId) return 0;
-  if (isPlayerBank(G.bank.bankId)) return num(G.bank.playerRate, 2, 0, 5);
+  if (isPlayerBank(G.bank.bankId)) return num(G.bank.playerRate, 2, 0, 5) + (G.bank.premiumClient ? 0.5 : 0);
   const b = DATA.banks.find(x => x.id === G.bank.bankId);
   return b ? b.lv : 0;
 }
@@ -799,7 +803,7 @@ function tickBiz(b, bi, info, now, af) {
     const priceF = priceFactor(b) * (promoOn ? 1.12 : 1);
     const demand = staffed ? Math.max(0, Math.round(bt.traffic * 1.6 * repF * priceF * act * mktMul * curSlot().m * rnd(0.5, 1.5) *
       (1 + b.emps.length * 0.08) * (1 + 0.03 * traitCount(b, 'sympa') + 0.05 * traitCount(b, 'veteran')) *
-      (postFilled(b, 'chefrayon') ? 1.08 : 1) * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul())) : 0;
+      (postFilled(b, 'chefrayon') ? 1.08 : 1) * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul() * gammeMul(b, 'demand'))) : 0;
     let sold = 0, rev = 0;
     for (let k = 0; k < demand; k++) {
       const p = pickProd(b); if (!p) break;
@@ -807,7 +811,7 @@ function tickBiz(b, bi, info, now, af) {
       if (st0 > 0) {
         const qty = Math.min(irnd(1, 4), st0);   // panier de 1 à 4 articles par client
         b.stock[p.id] = st0 - qty;
-        const unit = promoOn ? +(b.prices[p.id] * 0.9).toFixed(2) : b.prices[p.id];
+        const unit = +((promoOn ? +(b.prices[p.id] * 0.9).toFixed(2) : b.prices[p.id]) * gammeMul(b, 'price')).toFixed(2);
         rev += unit * qty; sold += qty; b.counters[p.id] = (b.counters[p.id] || 0) + qty;
         if (k === 0) bizFeed(b, 'Vente ' + p.n + ' ×' + qty, unit * qty);
         maybeSaleFeed(p.n, unit, b.name);
@@ -827,13 +831,13 @@ function tickBiz(b, bi, info, now, af) {
       FX.sound('warn');
     }
     rev *= af * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul();
-    const repGain = (1 + 0.4 * upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b, 'enseigne') ? 1.5 : 1) * skillBonus('rep') * (1 + 0.05 * traitCount(b, 'sympa'));
+    const repGain = (1 + 0.4 * upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b, 'enseigne') ? 1.5 : 1) * skillBonus('rep') * (1 + 0.05 * traitCount(b, 'sympa')) * gammeMul(b, 'rep');
     b.rep = clamp(b.rep + (sold ? 0.02 * sold * repGain : -0.03), 5, 100);
     if (rev > 0) { receive(rev, 'Ventes — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
     G.stats.sales += sold; if (sold) mission('sell', sold);
     /* démarque : vols en rayon (vidéosurveillance, SI, chef de rayon) */
     const totalSt = bt.prods.reduce((a2, pd) => a2 + (b.stock[pd.id] || 0), 0);
-    if (totalSt > 0 && Math.random() < 0.02 * (1 - 0.6 * upLvl(b, 'secu')) * (postFilled(b, 'info') ? 0.7 : 1) * (postFilled(b, 'chefrayon') ? 0.5 : 1)) {
+    if (totalSt > 0 && Math.random() < 0.02 * (1 - 0.6 * upLvl(b, 'secu')) * (postFilled(b, 'info') ? 0.7 : 1) * (postFilled(b, 'chefrayon') ? 0.5 : 1) * (b.gamme === 'premium' && b.type === 'magasin' ? 0.8 : 1)) {
       const pdv = pickProd(b);
       if (pdv && (b.stock[pdv.id] || 0) > 0) {
         const n = Math.min(b.stock[pdv.id], irnd(1, 2));
@@ -845,15 +849,15 @@ function tickBiz(b, bi, info, now, af) {
   else if (b.type === 'immobilier') {
     if (upLvl(b, 'vitrine') && W.t % 60 === 0) b.mandats = (b.mandats || 0) + upLvl(b, 'vitrine');
     let rev = (b.mandats || 0) * rnd(0.8, 2.2) * (1 + 0.25 * upLvl(b, 'reseau')) * (1 + 0.2 * upLvl(b, 'reno')) * (1 + 0.05 * b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
-    rev *= af * (postFilled(b, 'juriste') ? 1.2 : 1) * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul() * (staffed ? 1 : 0);
+    rev *= af * (postFilled(b, 'juriste') ? 1.2 : 1) * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul() * gammeMul(b, 'com') * (staffed ? 1 : 0);
     if (rev > 0) { receive(rev, 'Commissions — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
   }
   else if (b.type === 'banque') {
     const fees = b.accounts * (3 + 0.6 * upLvl(b, 'gab')) / 60 * (perk(b, 'fidelite') ? 1.1 : 1);
     const loanInc = b.loans * (b.tauxCredit + 0.5 * upLvl(b, 'trader')) / 100 / 3600 * (1 + 0.35 * upLvl(b, 'risque'));
     const depCost = b.deposits * b.tauxLivret / 100 / 3600;
-    if (staffed && Math.random() < 0.05 + b.mkt * 0.012 + 0.02 * upLvl(b, 'app') + 0.01 * b.emps.length + (perk(b, 'pub') ? 0.03 : 0)) b.accounts += irnd(1, 3);
-    b.deposits += b.accounts * rnd(0.4, 2.2);
+    if (staffed && Math.random() < 0.05 + b.mkt * 0.012 + 0.02 * upLvl(b, 'app') + 0.01 * b.emps.length + (perk(b, 'pub') ? 0.03 : 0) + (b.premiumCard ? 0.02 : 0)) b.accounts += irnd(1, 3 + (b.premiumCard ? 1 : 0));
+    b.deposits += b.accounts * rnd(0.4, 2.2) * (b.premiumCard ? 1.2 : 1);
     const dem = b.tauxCredit < 5 ? 1400 : (b.tauxCredit < 8 ? 750 : 220);
     b.loans += dem * Math.random();
     if (Math.random() < 0.008 * (1 + 0.5 * upLvl(b, 'risque')) * (1 - 0.25 * upLvl(b, 'secu')) * (postFilled(b, 'analyste') ? 0.6 : 1)) { const def = b.loans * rnd(0.005, 0.015); b.loans = Math.max(0, b.loans - def); bizFeed(b, 'Défaut de crédit', -def); }
@@ -874,6 +878,19 @@ function postesOf(b) { return (DATA.postes.commun || []).concat(DATA.postes[b.ty
 function postFilled(b, id) { return !!(b.posts && b.posts[id]); }
 function postsSalary(b) { return postesOf(b).reduce((a, po) => a + (postFilled(b, po.id) ? po.sal : 0), 0); }
 function traitCount(b, t) { return (b.emps || []).reduce((a, e) => a + (e.trait === t ? 1 : 0), 0); }
+function gammeMul(b, kind) {
+  const g = (DATA.gammes[b.type] || {})[b.gamme || 'standard'];
+  if (!g) return 1;
+  if (kind === 'price') return b.gamme === 'premium' ? 1.3 : b.gamme === 'eco' ? 0.85 : 1;
+  if (kind === 'demand') {
+    if (b.gamme === 'premium') return b.type === 'magasin' ? 0.9 : 0.85;
+    if (b.gamme === 'eco') return b.type === 'immobilier' ? 1.2 : 1.25;
+    return 1;
+  }
+  if (kind === 'rep') return b.gamme === 'premium' ? 1.5 : b.gamme === 'eco' ? 0.8 : 1;
+  if (kind === 'com') return b.gamme === 'premium' ? 1.4 : b.gamme === 'eco' ? 0.85 : 1;
+  return 1;
+}
 function b2bMul() {
   let m = 1;
   ((G.b2b && G.b2b.active) || []).forEach(c => { if (c.dir === 'out' && c.until > Date.now()) m += num(c.pct, 0, 0, 20) / 100; });
@@ -1196,7 +1213,7 @@ const A = {
   },
   selBiz(d) { const i = idxOk(d.i, G.biz.length); if (i < 0) return; T.selBiz = i; T.bizTab = 'overview'; FX.sound('click'); UI.render(); },
   backBiz() { T.selBiz = -1; FX.sound('back'); UI.render(); },
-  bizTab(d) { if (!['overview', 'prod', 'mkt', 'hr', 'ups', 'compta'].includes(d.t)) return; T.bizTab = d.t; FX.sound('click'); UI.render(); },
+  bizTab(d) { if (!['overview', 'prod', 'mkt', 'hr', 'ups', 'b2b', 'compta'].includes(d.t)) return; T.bizTab = d.t; FX.sound('click'); UI.render(); },
   bizAt(d) { const i = idxOk(d.b, G.biz.length); return i >= 0 ? G.biz[i] : null; },
 
   buyMat(d) {
@@ -1335,6 +1352,40 @@ const A = {
       else { FX.sound('error'); UI.toast((j && j.err) || 'Envoi impossible.', 'bad'); }
       T.b2bAt = 0; UI.render(true);
     }).catch(() => UI.toast('Serveur injoignable.', 'bad'));
+  },
+  setGamme(d) {
+    const b = A.bizAt(d); if (!b) return;
+    const g = String(d.g || 'standard');
+    const def = (DATA.gammes[b.type] || {})[g];
+    if (!def) return;
+    if ((b.gamme || 'standard') === g) return UI.toast('Gamme déjà active.', 'warn');
+    if (b.type === 'banque') {
+      if (g !== 'premium') { b.gamme = 'standard'; b.premiumCard = false; UI.toast('Retour à la carte standard.', 'warn'); refresh(); return; }
+      if (b.premiumCard) return UI.toast('Carte Premium déjà commandée.', 'warn');
+      if (balance() < 1000000) { FX.sound('error'); return UI.toast('Commande de la Carte Premium : 1 000 000 € requis.', 'bad'); }
+      pay(1000000, 'Commande Carte Premium', 'biz');
+      b.premiumCard = true; b.gamme = 'premium';
+      UI.confetti(); UI.moneyRain(); FX.sound('win');
+      UI.cardFx('Carte Premium activée', '1 000 000 €');
+      UI.toast('💳 Carte Premium commandée : vos clients n’auront plus aucun frais de transfert !', 'good');
+      save(); refresh(); return;
+    }
+    if (g !== 'standard' && balance() < def.cost) { FX.sound('error'); return UI.toast('Fonds insuffisants : ' + eur(def.cost) + '.', 'bad'); }
+    if (g !== 'standard') pay(def.cost, 'Gamme ' + def.n, 'biz');
+    b.gamme = g;
+    FX.sound('win'); UI.confetti();
+    UI.toast('🏷 Gamme « ' + def.n + ' » activée : ' + def.d, 'good');
+    save(); refresh();
+  },
+  assistUnlock() {
+    if (G.assistant) return UI.toast('Assistant déjà débloqué.', 'warn');
+    if (balance() < DATA.assistPrice) { FX.sound('error'); return UI.toast('Débloquage de l’assistant : ' + eur(DATA.assistPrice) + ' requis.', 'bad'); }
+    pay(DATA.assistPrice, 'Assistant personnel', 'out');
+    G.assistant = true;
+    UI.confetti(); FX.sound('win');
+    UI.toast('✦ Assistant personnel débloqué ! Il vous attend en bas à droite.', 'good');
+    UI.assistMount(true);
+    save(); refresh();
   },
   hirePost(d) {
     const b = A.bizAt(d); if (!b) return;
@@ -1834,7 +1885,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel', 'setMargin', 'restockGrocery', 'shopSel', 'hirePost', 'firePost', 'b2bAccept', 'b2bRefuse', 'b2bOfferSend'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel', 'setMargin', 'restockGrocery', 'shopSel', 'hirePost', 'firePost', 'b2bAccept', 'b2bRefuse', 'b2bOfferSend', 'setGamme', 'assistUnlock'];
 
 /* ── sauvegarde ── */
 let saveInFlight = false;

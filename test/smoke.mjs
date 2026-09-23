@@ -446,6 +446,49 @@ run('B2B local (mailbox ops)', `
   if (san.b2b.active.length !== 0) throw new Error('contrats expirés non purgés au sanitize');
 `);
 
+// ── v11.8 : assistant, gammes, carte premium ──
+run('assistant payant + contexte', `
+  if (G.assistant) throw new Error('assistant déjà débloqué par défaut');
+  UI.assistMount();
+  if (!document.getElementById('assistBtn')) throw new Error('bulle assistant absente');
+  const b0 = balance();
+  A.assistUnlock();
+  if (!G.assistant) throw new Error('assistant non débloqué');
+  if (Math.abs((b0 - balance()) - 30) > 0.01) throw new Error('prix assistant faux');
+  A.assistUnlock(); // doublon refusé
+  if (Math.abs((b0 - balance()) - 30) > 0.01) throw new Error('assistant payé deux fois !');
+  UI.assistRender();
+  if (!document.getElementById('apSugs')) throw new Error('panneau assistant sans suggestions');
+`);
+run('gammes par entreprise', `
+  G.cash = 5e6; G.biz = [];
+  G.biz.push(sanitizeBiz({ type: 'magasin', name: 'Mag Gamme' }));
+  const b0 = G.biz[0];
+  if ((b0.gamme || 'standard') !== 'standard') throw new Error('gamme défaut fausse');
+  A.setGamme({ b: '0', g: 'premium' });
+  if (b0.gamme !== 'premium') throw new Error('gamme premium non appliquée');
+  A.setGamme({ b: '0', g: 'premium' }); // doublon
+  A.setGamme({ b: '0', g: 'eco' });
+  if (b0.gamme !== 'eco') throw new Error('gamme eco non appliquée');
+  A.setGamme({ b: '0', g: 'zzz' }); // inconnue ignorée
+  if (b0.gamme !== 'eco') throw new Error('gamme inconnue acceptée !');
+  const san = sanitize(JSON.parse(JSON.stringify(G)));
+  if (san.biz[0].gamme !== 'eco') throw new Error('gamme non persistée au sanitize');
+`);
+run('carte premium banque (1 M€)', `
+  G.cash = 500000; G.biz = [];
+  G.biz.push(sanitizeBiz({ type: 'banque', name: 'Banque Test' }));
+  A.setGamme({ b: '0', g: 'premium' });
+  if (G.biz[0].premiumCard) throw new Error('carte premium achetée sans fonds !');
+  G.cash = 2000000;
+  A.setGamme({ b: '0', g: 'premium' });
+  if (!G.biz[0].premiumCard) throw new Error('carte premium non commandée');
+  if (G.cash !== 1000000) throw new Error('débit 1 M€ faux : ' + G.cash);
+  G.bank.bankId = 'player:moi:0'; G.bank.premiumClient = true;
+  if (bankRate() < 0.5) throw new Error('bonus premium client absent');
+  G.bank.bankId = null; G.bank.premiumClient = false; G.biz = []; G.cash = 5e6;
+`);
+
 // ── v11.3 : tutoriel 14 étapes sans bug ──
 run('tutoriel v11.3', `
   G.tuto = 0; G.stats.tutoDone = false;
@@ -544,7 +587,11 @@ run('entreprises', `
   G.biz[0].stock['baguette'] = 5;
   A.orderFill({b:'0'});
   A.orderFill({b:'0'});
-  A.selBiz({i:'1'}); ['overview','prod','mkt','hr','ups','compta'].forEach(t=>A.bizTab({t}));
+  A.selBiz({i:'1'}); ['overview','prod','mkt','hr','ups','b2b','compta'].forEach(t=>A.bizTab({t}));
+  if (T.bizTab !== 'compta') throw new Error('bizTab whitelist cassée');
+  A.bizTab({t:'b2b'});
+  if (T.bizTab !== 'b2b') throw new Error('onglet B2B non ouvrable');
+  A.bizTab({t:'overview'});
   A.selBiz({i:'2'}); ['overview','mkt','hr','ups','compta'].forEach(t=>A.bizTab({t}));
   A.selBiz({i:'3'}); ['overview','mkt','hr','ups','compta'].forEach(t=>A.bizTab({t}));
   A.selBiz({i:'99'});

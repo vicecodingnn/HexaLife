@@ -187,6 +187,28 @@ try {
     await sleep(1300);
     if (await page.evaluate(() => !!document.querySelector('.atm-ov'))) errors.push('GAB : overlay resté ouvert');
   }
+  // ── v11.8 : assistant-bulle (déblocage + question) ──
+  await page.click('#assistBtn');
+  await sleep(500);
+  const unlockVisible = await page.evaluate(() => !!document.querySelector('.ap-unlock'));
+  if (!unlockVisible) errors.push('assistant : panneau de déblocage absent');
+  await shot('20-assistant-locked');
+  await page.evaluate(() => { G.cash += 100; document.getElementById('toasts').innerHTML = ''; });
+  await page.click('[data-act="assistUnlock"]');
+  await sleep(600);
+  await page.evaluate(() => { document.getElementById('toasts').innerHTML = ''; });
+  // le panneau est déjà ouvert par le déblocage ; on ne reclique pas (sinon il se ferme)
+  const panelOpen = await page.evaluate(() => document.getElementById('assistPanel').classList.contains('open'));
+  if (!panelOpen) errors.push('assistant : panneau non ouvert après déblocage');
+  await page.fill('#apQ', 'comment gagner de l argent ?');
+  await page.click('#apSend');
+  await sleep(1600);
+  const answered = await page.evaluate(() => (document.querySelectorAll('#apBody .ap-msg.bot').length >= 2));
+  if (!answered) errors.push('assistant : réponse absente');
+  await shot('20b-assistant-chat');
+  await page.click('.ap-close');
+  await sleep(300);
+
   // courses : sélecteur de magasin
   await page.click('[data-id="marche"]');
   await sleep(600);
@@ -240,6 +262,8 @@ try {
   await shot('18c-rh-postes');
   await page.click('[data-act="bizTab"][data-t="b2b"]');
   await sleep(800);
+  const b2bOpen = await page.evaluate(() => T.bizTab === 'b2b');
+  if (!b2bOpen) errors.push('B2B : onglet non ouvrable au clic');
   await shot('19-b2b');
 
   // économie : graphiques + classement

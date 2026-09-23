@@ -364,6 +364,26 @@ ok(!!TERMS, 'endpoint /api/terms expose une version');
   ok(ref.status === 200 && ref.body.ok === true, 'b2b : refus d’offre ok');
 }
 
+/* ── taxe de transfert : exemption Carte Premium ── */
+{
+  const rO = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'BanqPremium', email: 'bp@bp.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tO = rO.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'BanqPremium', cash: 0, biz: [{ type: 'banque', name: 'BP', premiumCard: true }] } }) }, tO);
+  const rC = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'ClientPrem', email: 'cp@cp.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tC = rC.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'ClientPrem', cash: 5000, bank: { bankId: 'player:BanqPremium:0', compte: 5000, livret: 0, loans: [] } } }) }, tC);
+  const banks = await j('/api/banks');
+  ok((banks.body.banks || []).some(x => x.owner === 'BanqPremium' && x.premium === true), 'banques : flag premium exposé');
+  const tr = await j('/api/transfer', { method: 'POST', body: JSON.stringify({ to: 'BanqPremium', amount: 1000 }) }, tC);
+  ok(tr.status === 200 && tr.body.tax === 0 && tr.body.total === 1000, 'transfert : taxe 0 via banque à Carte Premium');
+  // sans premium : taxe normale
+  const rN = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'ClientNormal', email: 'cn@cn.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tN = rN.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'ClientNormal', cash: 5000, bank: { bankId: 'ce', compte: 5000, livret: 0, loans: [] } } }) }, tN);
+  const tr2 = await j('/api/transfer', { method: 'POST', body: JSON.stringify({ to: 'BanqPremium', amount: 1000 }) }, tN);
+  ok(tr2.status === 200 && tr2.body.tax === 50 && tr2.body.total === 1050, 'transfert : taxe 5 % normale sans premium');
+}
+
 /* ── présence & ping ── */
 {
   const p1 = await j('/api/ping', { method: 'POST' }, tA);

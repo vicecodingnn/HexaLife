@@ -12,6 +12,25 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### ✦ v11.8 — Assistant personnel, gammes de qualité, banque maximale
+- **Assistant-bulle** (bas droite, débloquable 30 € fictifs) : suggestions **contextuelles**
+  selon votre situation (faim basse, entreprise à l'arrêt, Livret vide…), chat avec
+  réponses animées (frappe progressive, points de saisie), base de connaissance
+  (argent, banque, impôts, B2B, santé, météo, gammes, Stripe…). Ne gêne jamais le site :
+  bulle compacte, panneau repliable, toasts/modales déplacés hors des écrans animés.
+- **Gammes de qualité par type d'entreprise** : éco / standard / premium avec effets
+  réels (prix, demande, réputation, vols). Boulangerie « Artisan premium », magasin
+  « Qualité supérieure », immo « Luxe »…
+- **Banque (entreprise) : Carte Premium à 1 000 000 €** : ses clients ne paient **plus
+  aucun frais de transfert** (vérifié serveur) et gagnent +0,5 % de Livret ; file de
+  clients animée au guichet, comptes accélérés.
+- **Onglet Banque (client) enrichi** : conseiller financier contextuel, panneau frais
+  (0 % si Carte Premium sinon 5 %), courbe d'historique de solde, carte noire si premium.
+- **Cohérence multijoueur** : le taux Livret et le statut Premium de votre banque joueur
+  sont resynchronisés automatiquement depuis le serveur à chaque visite de l'onglet.
+- Bugs corrigés : toasts/modales coincés dans les transforms de transition d'écran
+  (déplacés hors des écrans), panneau assistant qui ne s'ouvrait pas au déblocage.
+
 ### 🏭 v11.7 — RH obligatoires, postes de direction, contrats B2B
 - **Sans salarié, l'entreprise est À L'ARRÊT** (bannière pulsante) : ni production, ni ventes.
 - **RH complets** : candidats avec **traits de caractère** (Bosseur, Sympa, Vétéran,

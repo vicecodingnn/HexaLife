@@ -204,6 +204,7 @@
 
       show('scr-app');
       UI.buildRail(); UI.setTab('vie'); UI.buildTicker(); UI.updateTop();
+      UI.assistMount();
 
       if (isNew) {
         UI.toast('Bienvenue, citoyen ' + esc(G.name) + '. Vous démarrez avec 2 000 €.', 'good');

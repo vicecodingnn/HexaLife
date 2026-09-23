@@ -236,6 +236,47 @@ const DATA = {
     { id:'q_lotto', n:'Jouer 3 fois', tgt:3, type:'lotto', rew:150, xp:40 }
   ],
 
+  /* — v11.8 : gammes de qualité par type d'entreprise — */
+  gammes: {
+    boulangerie: {
+      eco: { cost: 8000, n: 'Éco', d: 'Prix -15 %, demande +25 %, réputation ×0,8' },
+      standard: { cost: 0, n: 'Standard', d: 'Équilibre prix / volume' },
+      premium: { cost: 20000, n: 'Artisan premium', d: 'Prix +30 %, demande -15 %, réputation ×1,5' }
+    },
+    magasin: {
+      eco: { cost: 8000, n: 'Hardi-discount', d: 'Prix -15 %, demande +25 %, réputation ×0,8' },
+      standard: { cost: 0, n: 'Standard', d: 'Équilibre prix / volume' },
+      premium: { cost: 20000, n: 'Qualité supérieure', d: 'Prix +30 %, demande -10 %, réputation ×1,5, vols -20 %' }
+    },
+    immobilier: {
+      eco: { cost: 8000, n: 'Volume', d: 'Commissions -15 %, mandates +20 %' },
+      standard: { cost: 0, n: 'Standard', d: 'Équilibre' },
+      premium: { cost: 20000, n: 'Luxe', d: 'Commissions +40 %, clientèle exigeante' }
+    },
+    banque: {
+      standard: { cost: 0, n: 'Standard', d: 'Carte HEXAPAY classique' },
+      premium: { cost: 1000000, n: 'Carte Premium', d: 'Carte noire client : 0 % de frais de transfert, +0,5 % Livret, comptes +vite' }
+    }
+  },
+  assistPrice: 30,
+  /* base de connaissance de l'assistant */
+  assist: [
+    { k: ['argent', 'gagner', 'sous', 'revenu'], r: 'Pour gagner : signe un contrat (Emploi), fonde une entreprise avec au moins un salarié (sinon elle est à l’arrêt), place ton épargne sur le Livret A, et relève les défis quotidiens. Le plus rentable tôt : boulangerie ou magasin avec 1 salarié + gamme adaptée.' },
+    { k: ['manger', 'faim', 'soif', 'boire'], r: 'Tes jauges baissent en continu : Courses → Inventaire → Consommer. Au-delà de 100 de faim tu risques le trouble alimentaire ; à 0 de santé, c’est l’hôpital.' },
+    { k: ['banque', 'compte', 'livret'], r: 'Ouvre un compte (onglet Banque) : salaires et ventes y tombent. Le Livret A rapporte son taux chaque mois. Clique sur ta carte pour ouvrir le GAB : dépôts, retraits, virements, ticket imprimé.' },
+    { k: ['entreprise', 'boss', 'patron', 'créer'], r: 'Une entreprise sans salarié est À L’ARRÊT : recrute dans RH, puis poste de direction (Directeur Général = +20 % CA). Surveille fraîcheur (boulangerie) et vols (magasin).' },
+    { k: ['impot', 'taxe', 'urssaf'], r: 'Salaires = prélèvement à la source automatique ; entreprises = IS 15 % mensuel + URSSAF 15 % de la masse salariale (réduite par le poste Comptable). Transferts entre joueurs : taxe 5 % (0 % si ta banque a la Carte Premium).' },
+    { k: ['b2b', 'contrat', 'partenariat'], r: 'Onglet B2B d’une entreprise : propose un partenariat à un joueur qui possède une entreprise. Il gagne +X % de CA 24 h, tu paies les frais à l’acceptation.' },
+    { k: ['maison', 'logement', 'loyer', 'immo'], r: 'Sans domicile, tes jauges baissent 1,5× plus vite. Loue (Immobilier) puis achète : la valeur fluctue avec l’indice immo, et louer à un locataire rapporte chaque minute.' },
+    { k: ['sante', 'malade', 'médecin'], r: 'Choisis un médecin traitant (Santé), vaccine-toi (grippe/covid/hépatite), et consulte dès que tu es malade : le coût est remboursé selon ta mutuelle.' },
+    { k: ['noir', 'illégal', 'police'], r: 'Le marché noir rapporte gros mais la chaleur monte ; à 100 = garde à vue + amende. Pot-de-vin pour redescendre, ou caution pour sortir immédiatement.' },
+    { k: ['loto', 'chance'], r: 'Loto : 5 € le ticket, ~6 % + bonus Chanceux. Les gains tombent directement sur ton compte.' },
+    { k: ['gamme', 'qualité', 'premium'], r: 'Chaque entreprise a une gamme (onglet Vue d’ensemble → Gamme) : éco = volume, premium = marges & réputation. La banque peut commander la Carte Premium (1 M€) : ses clients ne paient plus la taxe de transfert.' },
+    { k: ['assistant', 'aide', 'bulle'], r: 'Je suis ton assistant : pose-moi toute question (argent, banque, entreprises, impôts, B2B, santé…). Je propose aussi des actions selon ta situation actuelle.' },
+    { k: ['meteo', 'pluie', 'neige'], r: 'La météo influence tes jauges et tes commerces : canicule = soif accélérée, pluie/neige sans domicile = santé en baisse, et chaque enseigne a ses affinités météo.' },
+    { k: ['stripe', 'payer', 'boutique'], r: 'Boutique + : si le serveur a Stripe configuré, le pack est crédité automatiquement après paiement (webhook signé). Sinon les paiements sont désactivés : personne ne peut se créditer soi-même.' }
+  ],
+
   /* — v11.7 : postes de direction (par type) & traits de caractère des salariés — */
   postes: {
     commun: [

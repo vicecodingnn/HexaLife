@@ -440,7 +440,14 @@ const server = http.createServer(async (req, res) => {
         if (!to) return json(res, 400, { err: 'Joueur introuvable.' });
         if (to === a.name) return json(res, 400, { err: 'Destinataire invalide (vous-même).' });
         if (!(amount > 0) || amount > MAX_TRANSFER) return json(res, 400, { err: 'Montant invalide.' });
-        const tax = Math.max(1, Math.round(amount * 0.05));
+        let taxRate = 0.05;
+        const sv0 = DB.saves[a.name];
+        if (sv0 && sv0.bank && typeof sv0.bank.bankId === 'string' && sv0.bank.bankId.indexOf('player:') === 0) {
+          const parts = sv0.bank.bankId.split(':');
+          const ob = DB.saves[parts[1]] && Array.isArray(DB.saves[parts[1]].biz) ? DB.saves[parts[1]].biz[+parts[2]] : null;
+          if (ob && ob.premiumCard) taxRate = 0; // Carte Premium : zéro frais de transfert
+        }
+        const tax = taxRate > 0 ? Math.max(1, Math.round(amount * taxRate)) : 0;
         const total = amount + tax;
         const avail = savesBalance(a.name) - (DB.holds[a.name] || 0);
         if (avail < total) return json(res, 400, { err: 'Solde insuffisant (montant + taxe de ' + tax + ' €).' });
@@ -634,7 +641,8 @@ const server = http.createServer(async (req, res) => {
                 name: String(b.name || ('Banque ' + owner)).slice(0, 60),
                 owner,
                 livret: typeof b.tauxLivret === 'number' ? b.tauxLivret : 2,
-                accounts: Math.floor(b.accounts || 0)
+                accounts: Math.floor(b.accounts || 0),
+                premium: !!b.premiumCard
               });
             });
           }
