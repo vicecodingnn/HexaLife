@@ -51,6 +51,7 @@ function migrate(d) {
   d.users = d.users || {};
   d.saves = d.saves || {};
   d.mailbox = d.mailbox || {};
+  d.b2b = d.b2b || { offers: [], active: [] };
   d.announces = Array.isArray(d.announces) ? d.announces : [];
   d.announceCd = d.announceCd || {};
   d.holds = d.holds || {};
@@ -493,6 +494,78 @@ const server = http.createServer(async (req, res) => {
       }
       if (url === '/api/announce') {
         return json(res, 200, { list: DB.announces.filter(x => Date.now() - (x.at || 0) < 86400000) });
+      }
+
+      /* ── Contrats B2B entre joueurs ── */
+      const purgeB2B = () => {
+        const now = Date.now();
+        DB.b2b.active = (DB.b2b.active || []).filter(c => c.until > now);
+        DB.b2b.offers = (DB.b2b.offers || []).filter(o => now - o.at < 7 * 86400e3);
+      };
+      if (url === '/api/b2b/mine') {
+        const a = authUser(req, query);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        purgeB2B();
+        const hasBiz = n => { const sv = DB.saves[n]; return !!(sv && Array.isArray(sv.biz) && sv.biz.length); };
+        const partners = Object.keys(DB.saves).filter(n => n !== a.name && hasBiz(n)).slice(0, 40)
+          .map(n => ({ name: n, biz: DB.saves[n].biz.length, online: isOnline(n) }));
+        return json(res, 200, {
+          incoming: (DB.b2b.offers || []).filter(o => o.to === a.name),
+          outgoing: (DB.b2b.offers || []).filter(o => o.from === a.name),
+          active: (DB.b2b.active || []).filter(c => c.from === a.name || c.to === a.name)
+            .map(c => ({ dir: c.from === a.name ? 'out' : 'in', pct: c.pct, until: c.until, with: c.from === a.name ? c.to : c.from })),
+          partners
+        });
+      }
+      if (url === '/api/b2b/offer' && req.method === 'POST') {
+        const a = authUser(req, query);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        if (!rateOk(ip, 'b2b', 10)) return json(res, 429, { err: 'Trop d’offres.' });
+        const to = findUser(body.to);
+        const pct = Math.floor(+body.pct || 0);
+        if (!to || to === a.name) return json(res, 400, { err: 'Partenaire invalide.' });
+        if (![5, 10, 15, 20].includes(pct)) return json(res, 400, { err: 'Pourcentage invalide (5/10/15/20).' });
+        const hasBiz = n => { const sv = DB.saves[n]; return !!(sv && Array.isArray(sv.biz) && sv.biz.length); };
+        if (!hasBiz(a.name) || !hasBiz(to)) return json(res, 400, { err: 'Les deux joueurs doivent posséder une entreprise.' });
+        purgeB2B();
+        if ((DB.b2b.offers || []).some(o => o.from === a.name && o.to === to)) return json(res, 400, { err: 'Une offre est déjà en attente avec ce joueur.' });
+        if ((DB.b2b.active || []).some(c => (c.from === a.name && c.to === to) || (c.from === to && c.to === a.name))) return json(res, 400, { err: 'Un contrat est déjà actif avec ce joueur.' });
+        const fee = pct * 200;
+        const offer = { id: rid(), from: a.name, to, pct, fee, at: Date.now() };
+        DB.b2b.offers.push(offer);
+        DB.mailbox[to] = DB.mailbox[to] || [];
+        DB.mailbox[to].push({ id: rid(), type: 'b2bOffer', oid: offer.id, from: a.name, pct, fee, at: Date.now() });
+        persist();
+        return json(res, 200, { ok: true, fee });
+      }
+      if (url === '/api/b2b/accept' && req.method === 'POST') {
+        const a = authUser(req, query);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        purgeB2B();
+        const o = (DB.b2b.offers || []).find(x => x.id === String(body.id || ''));
+        if (!o || o.to !== a.name) return json(res, 400, { err: 'Offre introuvable.' });
+        const avail = savesBalance(o.from) - (DB.holds[o.from] || 0);
+        if (avail < o.fee) return json(res, 400, { err: 'Le partenaire n’a plus les fonds pour payer ce contrat.' });
+        const until = Date.now() + 24 * 3600e3;
+        DB.b2b.offers = DB.b2b.offers.filter(x => x.id !== o.id);
+        DB.b2b.active.push({ id: o.id, from: o.from, to: o.to, pct: o.pct, until });
+        DB.mailbox[o.from] = DB.mailbox[o.from] || [];
+        DB.mailbox[o.to] = DB.mailbox[o.to] || [];
+        DB.mailbox[o.from].push({ id: rid(), type: 'b2bDebit', amount: o.fee, label: 'Contrat B2B (' + o.pct + ' % avec ' + o.to + ')', at: Date.now() });
+        DB.mailbox[o.to].push({ id: rid(), type: 'b2bCredit', amount: o.fee, label: 'Contrat B2B (' + o.pct + ' % pour ' + o.from + ')', at: Date.now() });
+        DB.mailbox[o.from].push({ id: rid(), type: 'b2bStart', dir: 'out', pct: o.pct, until, with: o.to, at: Date.now() });
+        DB.mailbox[o.to].push({ id: rid(), type: 'b2bStart', dir: 'in', pct: o.pct, until, with: o.from, at: Date.now() });
+        DB.holds[o.from] = (DB.holds[o.from] || 0) + o.fee;
+        persist();
+        return json(res, 200, { ok: true });
+      }
+      if (url === '/api/b2b/refuse' && req.method === 'POST') {
+        const a = authUser(req, query);
+        if (!a) return json(res, 401, { err: 'Non connecté.' });
+        const before = (DB.b2b.offers || []).length;
+        DB.b2b.offers = (DB.b2b.offers || []).filter(x => !(x.id === String(body.id || '') && x.to === a.name));
+        persist();
+        return json(res, 200, { ok: DB.b2b.offers.length < before });
       }
 
       /* ── Magasins joueurs (courses entre joueurs) ── */

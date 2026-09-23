@@ -390,6 +390,62 @@ run('GAB retrait + ticket', `
 await sleep(1200);
 run('GAB fermé', `if (document.querySelector('.atm-ov')) throw new Error('GAB resté ouvert');`);
 
+// ── v11.7 : salariés obligatoires, paie mensuelle, postes, traits, B2B ──
+run('entreprise à l’arrêt sans salarié', `
+  G.cash = 5e6; G.bank.bankId = null; G.biz = [];
+  G.biz.push(sanitizeBiz({ type: 'boulangerie', name: 'Test RH' }));
+  const b0 = G.biz[0];
+  b0.mats = { farine: 200, levure: 200, beurre: 200, sucre: 200, choco: 200 };
+  b0.stock = { baguette: 50, croissant: 50, parchoc: 50, tarte: 50 };
+  b0.prices = { baguette: 1.2, croissant: 1.3, parchoc: 1.4, tarte: 9.9 };
+  const rev0 = b0.rev;
+  for (let k = 0; k < 40; k++) tick();
+  if (b0.rev !== rev0) throw new Error('entreprise sans salarié a vendu ! (' + (b0.rev - rev0) + ')');
+`);
+run('embauche + traits + reprise', `
+  const b0 = G.biz[0];
+  A.hire({ b: '0' });
+  if (!T.cands || T.cands.length !== 4) throw new Error('candidats absents');
+  if (!DATA.traits.some(t => t.id === T.cands[0].trait)) throw new Error('trait invalide');
+  A.hireConfirm({ b: '0', i: '0' });
+  if (b0.emps.length !== 1) throw new Error('embauche KO');
+  if (!DATA.traits.some(t => t.id === b0.emps[0].trait)) throw new Error('trait non enregistré');
+  const rev1 = b0.rev;
+  for (let k = 0; k < 60; k++) tick();
+  if (!(b0.rev > rev1)) throw new Error('entreprise toujours à l’arrêt après embauche');
+`);
+run('paie mensuelle + postes', `
+  const b0 = G.biz[0];
+  const sal = b0.emps[0].h * 100;
+  A.hirePost({ b: '0', p: 'dg' });
+  if (!b0.posts || !b0.posts.dg) throw new Error('poste DG non pourvu');
+  A.hirePost({ b: '0', p: 'dg' }); // doublon refusé
+  if (Object.keys(b0.posts).length !== 1) throw new Error('poste dupliqué !');
+  const t0 = W.t; W.t = 59;
+  tick(); // déclenche le mois
+  W.t = t0;
+  const entry = (G.journal || []).find(jn => String(jn.label).indexOf('Paie & charges') === 0);
+  if (!entry) throw new Error('ligne de paie absente du journal');
+  const attendu = sal + 2500 + (sal + 2500) * 0.15;
+  if (Math.abs(Math.abs(entry.amt) - attendu) > 1) throw new Error('paie mensuelle fausse : ' + Math.abs(entry.amt) + ' vs ' + attendu);
+  A.firePost({ b: '0', p: 'dg' });
+  if (b0.posts && b0.posts.dg) throw new Error('poste non supprimé');
+`);
+run('B2B local (mailbox ops)', `
+  G.b2b = { active: [] };
+  applyOp({ type: 'b2bStart', dir: 'out', pct: 10, until: Date.now() + 3600e3, with: 'Alice' });
+  if (!G.b2b.active.length || G.b2b.active[0].pct !== 10) throw new Error('b2bStart non stocké');
+  const b0 = G.biz[0];
+  const r0 = b0.rev;
+  for (let k = 0; k < 40; k++) tick();
+  if (!(b0.rev > r0)) throw new Error('boost B2B inopérant');
+  applyOp({ type: 'b2bDebit', amount: 2000, label: 'Contrat B2B' });
+  applyOp({ type: 'b2bCredit', amount: 2000, label: 'Contrat B2B' });
+  G.b2b.active[0].until = Date.now() - 1;
+  const san = sanitize(JSON.parse(JSON.stringify(G)));
+  if (san.b2b.active.length !== 0) throw new Error('contrats expirés non purgés au sanitize');
+`);
+
 // ── v11.3 : tutoriel 14 étapes sans bug ──
 run('tutoriel v11.3', `
   G.tuto = 0; G.stats.tutoDone = false;
@@ -404,6 +460,8 @@ run('tutoriel v11.3', `
 
 // ── v11.3 : soldes animés + courbes ──
 run('soldes animés & courbes', `
+  A.openBank({ id: 'ce', name: 'CE', rate: '3' });
+  G.bank.compte = 5000;
   UI.setTab('banque');
   if (!document.querySelector('[data-bal="cb"]')) throw new Error('data-bal cb absent');
   if (!document.querySelector('[data-bal="livret"]')) throw new Error('data-bal livret absent');

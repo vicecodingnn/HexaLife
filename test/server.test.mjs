@@ -326,6 +326,44 @@ ok(!!TERMS, 'endpoint /api/terms expose une version');
   ok(buySelf.status === 400, 'buyShop : achat sur soi-même refusé');
 }
 
+/* ── contrats B2B entre joueurs ── */
+{
+  const r1 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'B2BA', email: 'a@b2b.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const r2 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'B2BB', email: 'b@b2b.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tA2 = r1.body.token, tB2 = r2.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'B2BA', cash: 5000, biz: [{ type: 'magasin', name: 'A' }] } }) }, tA2);
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'B2BB', cash: 100, biz: [{ type: 'magasin', name: 'B' }] } }) }, tB2);
+  const offBad = await j('/api/b2b/offer', { method: 'POST', body: JSON.stringify({ to: 'B2BB', pct: 7 }) }, tA2);
+  ok(offBad.status === 400, 'b2b : pct hors barème refusé');
+  const off = await j('/api/b2b/offer', { method: 'POST', body: JSON.stringify({ to: 'B2BB', pct: 10 }) }, tA2);
+  ok(off.status === 200 && off.body.fee === 2000, 'b2b : offre créée (frais 2 000 €)');
+  const mineB = await j('/api/b2b/mine', {}, tB2);
+  ok(mineB.body.incoming.length === 1 && mineB.body.incoming[0].from === 'B2BA', 'b2b : offre reçue visible');
+  const accPoor = await j('/api/b2b/accept', { method: 'POST', body: JSON.stringify({ id: mineB.body.incoming[0].id }) }, tA2);
+  ok(accPoor.status === 400, 'b2b : acceptation par un non-destinataire refusée');
+  // B2BB accepte mais le payeur (B2BA) a les fonds : c'est B2BA qui paie → accept par B2BB ok
+  const acc = await j('/api/b2b/accept', { method: 'POST', body: JSON.stringify({ id: mineB.body.incoming[0].id }) }, tB2);
+  ok(acc.status === 200, 'b2b : acceptation ok (payeur solvable)');
+  const mbA = await j('/api/mailbox', {}, tA2);
+  ok((mbA.body.ops || []).some(o => o.type === 'b2bDebit' && o.amount === 2000) && (mbA.body.ops || []).some(o => o.type === 'b2bStart' && o.dir === 'out'), 'b2b : débit + start chez le payeur');
+  const mbB = await j('/api/mailbox', {}, tB2);
+  ok((mbB.body.ops || []).some(o => o.type === 'b2bCredit' && o.amount === 2000), 'b2b : crédit chez le bénéficiaire');
+  const mineA = await j('/api/b2b/mine', {}, tA2);
+  ok(mineA.body.active.length === 1 && mineA.body.active[0].dir === 'out' && mineA.body.active[0].with === 'B2BB', 'b2b : contrat actif listé');
+  const dup = await j('/api/b2b/offer', { method: 'POST', body: JSON.stringify({ to: 'B2BB', pct: 5 }) }, tA2);
+  ok(dup.status === 400, 'b2b : second contrat avec même joueur refusé');
+  // refuse path (3e joueur pour éviter le contrat déjà actif)
+  const r3 = await j('/api/register', { method: 'POST', body: JSON.stringify({ user: 'B2BC', email: 'c@b2b.fr', pass: 'Abcd1234!', acceptCgu: true, termsVersion: TERMS }) });
+  const tC2 = r3.body.token;
+  await j('/api/save', { method: 'POST', body: JSON.stringify({ state: { v: 11, name: 'B2BC', cash: 0, biz: [{ type: 'magasin', name: 'C' }] } }) }, tC2);
+  const off2 = await j('/api/b2b/offer', { method: 'POST', body: JSON.stringify({ to: 'B2BA', pct: 5 }) }, tC2);
+  ok(off2.status === 200, 'b2b : offre d’un 3e joueur créée');
+  const mineA2 = await j('/api/b2b/mine', {}, tA2);
+  const incId = (mineA2.body.incoming || [])[0] && mineA2.body.incoming[0].id;
+  const ref = await j('/api/b2b/refuse', { method: 'POST', body: JSON.stringify({ id: incId }) }, tA2);
+  ok(ref.status === 200 && ref.body.ok === true, 'b2b : refus d’offre ok');
+}
+
 /* ── présence & ping ── */
 {
   const p1 = await j('/api/ping', { method: 'POST' }, tA);

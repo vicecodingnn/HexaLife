@@ -12,6 +12,23 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### 🏭 v11.7 — RH obligatoires, postes de direction, contrats B2B
+- **Sans salarié, l'entreprise est À L'ARRÊT** (bannière pulsante) : ni production, ni ventes.
+- **RH complets** : candidats avec **traits de caractère** (Bosseur, Sympa, Vétéran,
+  Flemmard, Malhonnête — effets réels sur production, demande, réputation, coulage de
+  caisse), cartes salariés animées, **paie mensuelle** = salaires (h × 100 h) + postes +
+  URSSAF 15 % (réduite par le Comptable).
+- **Postes de direction par type** (boosts) : Directeur Général (+20 % CA), Service
+  Informatique (−30 % vols/incidents), Comptable (−15 % URSSAF) + Chef Boulanger,
+  Chef de Rayon, Juriste, Analyste Risques selon l'entreprise.
+- **Contrats B2B entre joueurs** : offre (5/10/15/20 % de CA pendant 24 h contre frais),
+  acceptation/refus, débit/crédit automatiques via mailbox, boost appliqué en temps réel,
+  onglet B2B dédié (contrats actifs avec compte à rebours, offres reçues/envoyées, partenaires).
+- **Coûts de création augmentés** : boulangerie 60 k€, magasin 45 k€, immo 150 k€, banque 400 k€.
+- Clients réalistes : **panier de 1 à 4 articles** par client, trafic ×1,6.
+- Tests : arrêt sans salarié, reprise après embauche, paie exacte via journal, traits,
+  postes, purge B2B au sanitize, 100 assertions serveur dont flux B2B complet à 3 joueurs.
+
 ### 🏧 v11.6 — vrai distributeur, entreprises vivantes, courses multi-magasins, taxe transferts
 - **Distributeur automatique HEXAPAY GAB T-800** (clic sur une carte) : machine complète
   animée — écran phosphore scanlines, **clavier physique** (saisie du montant touche par

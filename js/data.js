@@ -106,7 +106,7 @@ const DATA = {
 
   bizTypes: {
     boulangerie: {
-      label:'Boulangerie', cost:25000, traffic:4.0, maxEmp:4,
+      label:'Boulangerie', cost:60000, traffic:4.0, maxEmp:4,
       mats: { farine:{n:'Farine',p:0.32}, beurre:{n:'Beurre',p:0.65}, sucre:{n:'Sucre',p:0.42}, levure:{n:'Levure',p:0.15}, choco:{n:'Chocolat',p:1.05} },
       prods: [
         { id:'baguette', n:'Baguette', in:{farine:1,levure:1}, ref:1.20, w:5 },
@@ -116,15 +116,15 @@ const DATA = {
       ]
     },
     magasin: {
-      label:'Magasin', cost:18000, traffic:3.4, maxEmp:4,
+      label:'Magasin', cost:45000, traffic:3.4, maxEmp:4,
       prods: [
         { id:'epicerie', n:'Épicerie', cost:2.6, ref:5.9, w:5 }, { id:'boissons', n:'Boissons', cost:1.4, ref:3.4, w:4 },
         { id:'hygiene', n:'Hygiène', cost:2.2, ref:5.2, w:2 }, { id:'snacks', n:'Snacks', cost:0.9, ref:2.3, w:5 },
         { id:'frais', n:'Frais', cost:3.2, ref:6.9, w:3 }, { id:'maison', n:'Maison', cost:2.8, ref:6.2, w:2 }
       ]
     },
-    immobilier: { label:'Agence immo', cost:40000, req:'carteT', maxEmp:3 },
-    banque: { label:'Banque', cost:100000, req:'amf', maxEmp:4 }
+    immobilier: { label:'Agence immo', cost:150000, req:'carteT', maxEmp:3 },
+    banque: { label:'Banque', cost:400000, req:'amf', maxEmp:4 }
   },
 
   ups: {
@@ -234,6 +234,26 @@ const DATA = {
     { id:'q_train', n:'Terminer une formation', tgt:1, type:'train', rew:400, xp:100 },
     { id:'q_cash', n:'Atteindre 10 000 €', tgt:10000, type:'cash', rew:600, xp:120 },
     { id:'q_lotto', n:'Jouer 3 fois', tgt:3, type:'lotto', rew:150, xp:40 }
+  ],
+
+  /* — v11.7 : postes de direction (par type) & traits de caractère des salariés — */
+  postes: {
+    commun: [
+      { id:'dg', n:'Directeur Général', sal:2500, d:'+20 % de chiffre d’affaires' },
+      { id:'info', n:'Service Informatique', sal:1600, d:'-30 % vols & incidents, flux stabilisés' },
+      { id:'compta', n:'Comptable', sal:1400, d:'-15 % d’URSSAF' }
+    ],
+    boulangerie: [ { id:'chef', n:'Chef Boulanger', sal:1800, d:'+1 fournée/s et réputation+' } ],
+    magasin: [ { id:'chefrayon', n:'Chef de Rayon', sal:1500, d:'+8 % de demande, -50 % vols' } ],
+    immobilier: [ { id:'juriste', n:'Juriste', sal:1900, d:'+20 % de commissions' } ],
+    banque: [ { id:'analyste', n:'Analyste Risques', sal:2000, d:'-40 % de défauts de crédit' } ]
+  },
+  traits: [
+    { id:'bosseur', n:'Bosseur·se', e:'+10 % production', ico:'💪' },
+    { id:'sympa', n:'Sympa', e:'+3 % demande chacun', ico:'😊' },
+    { id:'veteran', n:'Vétéran·e', e:'+5 % production & demande', ico:'🎖' },
+    { id:'flemmard', n:'Flemmard·se', e:'-10 % production', ico:'🦥' },
+    { id:'voleur', n:'Malhonnête', e:'risque de coulage de caisse', ico:'🕶' }
   ],
 
   /* — v11.6 : enseignes PNJ pour les courses (multiplicateur de prix) — */

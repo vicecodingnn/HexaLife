@@ -455,6 +455,7 @@ const UI = (() => {
     if (T.tab === 'immobilier' && W) FX.chart(el('chImmoLocal'), (W.hImmo || []).slice(-70), 'rgb(75,179,128)');
     if (T.tab === 'banque') loadPlayerBanks();
     if (T.tab === 'marche') loadShops();
+    if (T.tab === 'entreprises' && T.bizTab === 'b2b') loadB2B();
     if (T.tab === 'entreprises' && T.selBiz >= 0 && G.biz[T.selBiz] && G.biz[T.selBiz].type === 'banque') loadExtClients();
     if (T.tab === 'profil') T.achNew = 0;
     if (T.tab === 'profil') buildRail();
@@ -728,6 +729,16 @@ const UI = (() => {
       }).join('') + '</div>';
   }
 
+  function loadB2B() {
+    const now = Date.now();
+    if (T.b2bAt && now - T.b2bAt < 15000) return;
+    T.b2bAt = now;
+    if (DB.mode() !== 'api') { T.b2bCache = { incoming: [], outgoing: [], active: [], partners: [] }; return; }
+    DB.authFetch('/api/b2b/mine').then(j => {
+      T.b2bCache = { incoming: (j && j.incoming) || [], outgoing: (j && j.outgoing) || [], active: (j && j.active) || [], partners: (j && j.partners) || [] };
+      if (T.tab === 'entreprises' && T.bizTab === 'b2b') render(true);
+    }).catch(() => { T.b2bCache = { incoming: [], outgoing: [], active: [], partners: [] }; });
+  }
   function loadShops() {
     const now = Date.now();
     if (T.shopsAt && now - T.shopsAt < 15000) return; // anti boucle de re-render
@@ -857,7 +868,7 @@ const UI = (() => {
   function bizTabs(b) {
     const tabs = [['overview', 'Vue d’ensemble']];
     if (b.type === 'boulangerie' || b.type === 'magasin') tabs.push(['prod', 'Production']);
-    tabs.push(['mkt', 'Marketing']); tabs.push(['hr', 'RH']); tabs.push(['ups', 'Améliorations']); tabs.push(['compta', 'Compta']);
+    tabs.push(['mkt', 'Marketing']); tabs.push(['hr', 'RH']); tabs.push(['ups', 'Améliorations']); tabs.push(['b2b', 'B2B']); tabs.push(['compta', 'Compta']);
     return '<div class="biz-tabs">' + tabs.map(([id, lbl]) => '<button class="biz-tab' + (T.bizTab === id ? ' active' : '') + '" data-act="bizTab" data-t="' + id + '">' + lbl + '</button>').join('') + '</div>';
   }
   function activeChips(b) {
@@ -882,9 +893,11 @@ const UI = (() => {
     let body = '';
     const bt = DATA.bizTypes[b.type] || {};
     if (T.bizTab === 'overview') {
+      const stopped = b.emps.length === 0;
       const top = Object.entries(b.counters || {}).sort((a, b2) => b2[1] - a[1]).slice(0, 3)
         .map(([pid, n]) => { const p = (bt.prods || []).find(x => x.id === pid); return p && n > 0 ? '<span class="chip gold">' + esc(p.n) + ' ×' + n + '</span>' : ''; }).join(' ');
-      body = '<div class="biz-chips">' + (activeChips(b) || '<span class="chip">Aucun effet actif</span>') + '</div>' +
+      body = (stopped ? '<div class="stopped-banner">⛔ À l’arrêt — aucun salarié. Recrutez dans l’onglet RH pour redémarrer.</div>' : '') +
+        '<div class="biz-chips">' + (activeChips(b) || '<span class="chip">Aucun effet actif</span>') + '</div>' +
         '<div class="grid3"><div class="kpi"><div class="k-lbl">CA cumulé</div><div class="k-val gold">' + kfmt(b.rev) + '</div></div>' +
         '<div class="kpi"><div class="k-lbl">Réputation</div><div class="k-val">' + Math.round(b.rep) + '<span class="k-sub">/100</span></div><div class="bar b-gold" style="margin:8px 0 0"><div class="fill" style="width:' + b.rep + '%"></div></div></div>' +
         '<div class="kpi"><div class="k-lbl">Salaires versés</div><div class="k-val" style="color:var(--red)">' + kfmt(b.wagesTotal || 0) + '</div></div></div>' +
@@ -943,9 +956,47 @@ const UI = (() => {
     }
     else if (T.bizTab === 'hr') {
       const max = bt.maxEmp || 4;
-      const empList = b.emps.map((e, ei) => '<div class="rowline"><div style="display:flex;align-items:center;gap:12px"><span class="cand-ava">' + esc(String(e.n).split(' ').map(x => x[0]).join('').slice(0, 2)) + '</span><div><div class="lbl">' + esc(e.n) + '</div><div class="det">' + eur(e.h) + '/h · ' + eur(e.h * 151.67) + '/mois</div></div></div><button class="btn btn-sm btn-danger" data-act="fire" data-b="' + i + '" data-i="' + ei + '">Licencier</button></div>').join('') || '<div class="empty">Aucun salarié.</div>';
-      body = '<div class="rowline"><div><div class="lbl">Effectif : ' + b.emps.length + ' / ' + max + '</div><div class="det">Masse salariale : <b class="money">' + eur(b.emps.reduce((a, e) => a + e.h * 151.67, 0)) + '</b>/mois · +8 % de demande par salarié</div></div>' +
-        '<button class="btn btn-primary' + (b.emps.length >= max ? '' : ' btn-pop') + '" data-act="hire" data-b="' + i + '"' + (b.emps.length >= max ? ' disabled' : '') + '>Recruter</button></div>' + empList;
+      const staff = b.emps.reduce((a, e) => a + num(e.h, 10, 5, 500) * 100, 0);
+      const pst = postsSalary(b);
+      const urs = Math.round((staff + pst) * 0.15 * (postFilled(b, 'compta') ? 0.85 : 1));
+      const empCards = b.emps.map((e, ei) => {
+        const tr = DATA.traits.find(t => t.id === e.trait) || DATA.traits[0];
+        return '<div class="emp-card" style="animation-delay:' + (ei * 0.06) + 's"><div class="emp-top"><span class="cand-ava">' + esc(String(e.n).split(' ').map(x => x[0]).join('').slice(0, 2)) + '</span>' +
+          '<div style="flex:1"><div class="lbl">' + esc(e.n) + '</div><div class="det">' + eur(e.h) + '/h · <b class="money">' + eur(e.h * 100) + '</b>/mois</div></div>' +
+          '<button class="btn btn-sm btn-danger" data-act="fire" data-b="' + i + '" data-i="' + ei + '">Licencier</button></div>' +
+          '<div class="trait-badge ' + e.trait + '">' + tr.ico + ' ' + esc(tr.n) + ' · <i>' + esc(tr.e) + '</i></div></div>';
+      }).join('');
+      const postCards = postesOf(b).map(po => {
+        const filled = postFilled(b, po.id);
+        return '<div class="post-card' + (filled ? ' filled' : '') + '"><div class="po-n">🎖 ' + esc(po.n) + '</div>' +
+          '<div class="po-d">' + esc(po.d) + '</div><div class="po-sal">' + eur(po.sal) + '/mois</div>' +
+          (filled ? '<div class="po-who">' + esc(b.posts[po.id].n) + '</div><button class="btn btn-sm btn-danger" data-act="firePost" data-b="' + i + '" data-p="' + po.id + '">Supprimer le poste</button>'
+                  : '<button class="btn btn-sm btn-primary" data-act="hirePost" data-b="' + i + '" data-p="' + po.id + '">Recruter</button>') + '</div>';
+      }).join('');
+      body = (b.emps.length === 0 ? '<div class="stopped-banner">⛔ Entreprise à l’arrêt : recrutez au moins un salarié pour redémarrer la production et les ventes.</div>' : '') +
+        '<div class="rowline"><div><div class="lbl">Effectif : ' + b.emps.length + ' / ' + max + '</div>' +
+        '<div class="det">Paie mensuelle : salaires <b class="money">' + eur(staff) + '</b> + postes <b class="money">' + eur(pst) + '</b> + URSSAF <b class="negx">' + eur(urs) + '</b> = <b class="money">' + eur(staff + pst + urs) + '</b>/mois</div></div>' +
+        '<button class="btn btn-primary' + (b.emps.length >= max ? '' : ' btn-pop') + '" data-act="hire" data-b="' + i + '"' + (b.emps.length >= max ? ' disabled' : '') + '>Recruter un salarié</button></div>' +
+        (empCards || '<div class="empty">Aucun salarié. Sans équipe, l’entreprise ne tourne pas.</div>') +
+        '<h3>Postes de direction (boosts)</h3><div class="post-grid">' + postCards + '</div>';
+    }
+    else if (T.bizTab === 'b2b') {
+      const c = T.b2bCache || { incoming: [], outgoing: [], active: [], partners: [] };
+      const act = ((G.b2b && G.b2b.active) || []).map((ct, ci) => '<div class="b2b-card"><div class="b2b-head">' + (ct.dir === 'out' ? ' Vous boostez ' : '📥 Boost reçu de ') + '<b>' + esc(ct.with) + '</b></div>' +
+        '<div class="det">+' + ct.pct + ' % de CA · expire dans <span class="cd" data-until="' + ct.until + '">…</span></div></div>').join('') || '<div class="empty">Aucun contrat actif.</div>';
+      const inc = c.incoming.map(o => '<div class="b2b-card offer"><div class="b2b-head">📨 <b>' + esc(o.from) + '</b> propose +' + o.pct + ' % de CA sur vos entreprises</div>' +
+        '<div class="det">Contre ' + eur(o.fee) + ' (payés par le partenaire à l’acceptation)</div>' +
+        '<div class="btn-row" style="margin-top:8px"><button class="btn btn-sm btn-primary" data-act="b2bAccept" data-id="' + esc(o.id) + '">Accepter</button><button class="btn btn-sm btn-ghost" data-act="b2bRefuse" data-id="' + esc(o.id) + '">Refuser</button></div></div>').join('') || '<div class="empty">Aucune offre reçue.</div>';
+      const outg = c.outgoing.map(o => '<div class="b2b-card"><div class="b2b-head">⏳ Offre à <b>' + esc(o.to) + '</b> (+' + o.pct + ' %)</div><div class="det">En attente de réponse · frais ' + eur(o.fee) + '</div></div>').join('') || '<div class="empty">Aucune offre envoyée.</div>';
+      const partners = c.partners.filter(pp => pp.name !== G.name);
+      body = '<div class="m-hint" style="margin-bottom:12px">Un contrat B2B : votre partenaire reçoit +X % de chiffre d’affaires sur toutes ses entreprises pendant 24 h, et vous payez les frais à l’acceptation. Les deux joueurs doivent posséder une entreprise.</div>' +
+        '<div class="panel" style="margin-bottom:14px"><h2>Proposer un partenariat</h2>' +
+        (partners.length ? '<div class="btn-row" style="flex-wrap:wrap"><select class="mini" id="b2bTo" style="width:auto;min-width:180px">' + partners.map(pp => '<option value="' + esc(pp.name) + '">' + esc(pp.name) + ' (' + pp.biz + ' ent.' + (pp.online ? ' · en ligne' : '') + ')</option>').join('') + '</select>' +
+        '<select class="mini" id="b2bPct" style="width:auto"><option value="5">+5 % (1 000 €)</option><option value="10">+10 % (2 000 €)</option><option value="15">+15 % (3 000 €)</option><option value="20">+20 % (4 000 €)</option></select>' +
+        '<button class="btn btn-primary btn-sm" data-act="b2bOfferSend">Envoyer l’offre</button></div>' : '<div class="empty">Aucun autre joueur ne possède d’entreprise pour le moment.</div>') + '</div>' +
+        '<h3>Contrats actifs</h3>' + act +
+        '<h3>Offres reçues</h3>' + inc +
+        '<h3>Offres envoyées</h3>' + outg;
     }
     else if (T.bizTab === 'ups') {
       body = (DATA.ups[b.type] || []).map(u => {

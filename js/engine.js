@@ -123,6 +123,26 @@ function applyOp(op) {
       FX.sound('cash');
       UI.toast('🛒 ' + esc(op.from || 'Un client') + ' a acheté dans votre magasin (+' + eur(op.amount) + ')', 'good');
     }
+    else if (op.type === 'b2bOffer') {
+      FX.sound('bell');
+      UI.toast('🤝 Offre B2B de ' + esc(op.from) + ' : +' + op.pct + ' % de CA contre ' + eur(op.fee) + ' — onglet B2B pour répondre', 'good');
+    }
+    else if (op.type === 'b2bDebit') {
+      pay(num(op.amount, 0, 0, 1e12), op.label || 'Contrat B2B', 'biz');
+      FX.sound('cash');
+      UI.toast('🤝 Contrat B2B : ' + eur(op.amount) + ' débités', '');
+    }
+    else if (op.type === 'b2bCredit') {
+      receive(num(op.amount, 0, 0, 1e12), op.label || 'Contrat B2B', 'biz');
+      UI.confetti(); FX.sound('win');
+      UI.toast('🤝 Contrat B2B signé : +' + eur(op.amount) + ' reçus', 'good');
+    }
+    else if (op.type === 'b2bStart') {
+      if (!G.b2b) G.b2b = { active: [] };
+      G.b2b.active.push({ dir: op.dir === 'in' ? 'in' : 'out', pct: num(op.pct, 5, 5, 20), until: num(op.until, 0, 0), with: String(op.with || '').slice(0, 40) });
+      UI.toast(op.dir === 'out' ? '🤝 Partenariat actif : +' + op.pct + ' % de CA sur vos entreprises (' + esc(op.with) + ')' : '🤝 ' + esc(op.with) + ' partenaire de vos entreprises (+' + op.pct + ' % pour elle)', 'good');
+      FX.sound('win');
+    }
     else if (op.type === 'adminCredit') { receive(num(op.amount, 0, 0, 1e12), 'Bonus administrateur', 'in'); UI.confetti(); FX.sound('win'); UI.toast('🎁 Bonus admin +' + eur(op.amount), 'good'); }
     else if (op.type === 'adminDebit') { pay(num(op.amount, 0, 0, 1e12), 'Malus administrateur', 'out'); FX.sound('error'); UI.toast('⚠ Malus admin −' + eur(op.amount), 'bad'); }
     else if (op.type === 'deleteBiz') { G.biz = []; T.selBiz = -1; FX.sound('error'); UI.toast('🏚 Vos entreprises ont été supprimées par un admin', 'bad'); }
@@ -174,7 +194,7 @@ function newGame(name) {
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
     missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
     journal: [], tuto: 0, skills: {},
-    ach: {}, daily: { lastDay: '', streak: 0 },
+    ach: {}, daily: { lastDay: '', streak: 0 }, b2b: { active: [] },
     market: { mult: {}, until: 0 }, histBal: [], carState: {}, sportCd: 0,
     stats: {
       earned: 0, tax: 0, spent: 0, sales: 0, premium: 0, events: 0, missionsDone: 0,
@@ -311,6 +331,14 @@ function sanitize(s) {
     streak: num(s.daily && s.daily.streak, 0, 0, 99999)
   };
 
+  out.b2b = { active: [] };
+  if (s.b2b && Array.isArray(s.b2b.active)) {
+    out.b2b.active = s.b2b.active.filter(c => c && typeof c === 'object')
+      .slice(0, 10)
+      .map(c => ({ dir: c.dir === 'in' ? 'in' : 'out', pct: num(c.pct, 5, 5, 20), until: num(c.until, 0, 0), with: String(c.with || '').slice(0, 40) }))
+      .filter(c => c.until > Date.now());
+  }
+
   /* marché, historique de solde, usure voitures, sport (v11.1) */
   out.market = { mult: {}, until: num(s.market && s.market.until, 0, 0) };
   if (s.market && s.market.mult && typeof s.market.mult === 'object') {
@@ -371,7 +399,14 @@ function sanitizeBiz(b) {
   }
   if (bt.mats) for (const m of Object.keys(bt.mats)) out.mats[m] = num(b.mats && b.mats[m], 0, 0, 1e9);
   if (Array.isArray(b.emps)) out.emps = b.emps.filter(e => e && typeof e === 'object')
-    .slice(0, bt.maxEmp || 4).map(e => ({ n: String(e.n || 'Salarié').slice(0, 40), h: num(e.h, 14, 5, 500) }));
+    .slice(0, bt.maxEmp || 4).map(e => ({ n: String(e.n || 'Salarié').slice(0, 40), h: num(e.h, 14, 5, 500), trait: DATA.traits.some(t => t.id === e.trait) ? e.trait : 'bosseur' }));
+  out.posts = {};
+  if (b.posts && typeof b.posts === 'object') {
+    for (const po of postesOf(out)) {
+      const v = b.posts[po.id];
+      if (v && typeof v === 'object') out.posts[po.id] = { n: String(v.n || 'Poste').slice(0, 40), since: num(v.since, Date.now(), 0) };
+    }
+  }
   for (const u of (DATA.ups[b.type] || [])) {
     const l = Math.floor(num(b.ups && b.ups[u.id], 0, 0, u.max));
     if (l > 0) out.ups[u.id] = l;
@@ -721,6 +756,7 @@ function weatherMul(type) { return (curWeather().mul || {})[type] || 1; }
 
 function tickBiz(b, bi, info, now, af) {
   let revTick = 0;
+  const staffed = b.emps.length > 0; // sans salarié : entreprise à l'arrêt
   const localMul = (b.boostUntil > now ? b.boostMul : 1) * (perk(b, 'fidelite') ? 1.08 : 1);
   const promoOn = b.promoUntil > now;
 
@@ -742,7 +778,8 @@ function tickBiz(b, bi, info, now, af) {
         });
         if (lost > 0) { b.spoil = (b.spoil || 0) + lost; bizFeed(b, 'Pertes fraîcheur', -lost); }
       }
-      const crafts = 1 + b.emps.length + upLvl(b, 'four');
+      let crafts = staffed ? (1 + b.emps.length + upLvl(b, 'four') + (postFilled(b, 'chef') ? 1 : 0)) : 0;
+      crafts = Math.max(0, Math.round(crafts * (1 + 0.10 * traitCount(b, 'bosseur') - 0.10 * traitCount(b, 'flemmard') + 0.05 * traitCount(b, 'veteran'))));
       for (let k = 0; k < crafts; k++) {
         const rec = bt.prods[irnd(0, bt.prods.length - 1)];
         if (hasMats(b, rec)) { useMats(b, rec); b.stock[rec.id] = (b.stock[rec.id] || 0) + 1; }
@@ -760,17 +797,27 @@ function tickBiz(b, bi, info, now, af) {
     const act = 0.85 + 0.3 * Math.sin(W.t / 70) + Math.random() * 0.3;
     const repF = 0.4 + b.rep / 80;
     const priceF = priceFactor(b) * (promoOn ? 1.12 : 1);
-    const demand = Math.max(0, Math.round(bt.traffic * repF * priceF * act * mktMul * curSlot().m * rnd(0.5, 1.5) * (1 + b.emps.length * 0.08)));
+    const demand = staffed ? Math.max(0, Math.round(bt.traffic * 1.6 * repF * priceF * act * mktMul * curSlot().m * rnd(0.5, 1.5) *
+      (1 + b.emps.length * 0.08) * (1 + 0.03 * traitCount(b, 'sympa') + 0.05 * traitCount(b, 'veteran')) *
+      (postFilled(b, 'chefrayon') ? 1.08 : 1) * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul())) : 0;
     let sold = 0, rev = 0;
     for (let k = 0; k < demand; k++) {
-      const p = pickProd(b);
-      if ((b.stock[p.id] || 0) > 0) {
-        b.stock[p.id]--;
+      const p = pickProd(b); if (!p) break;
+      const st0 = b.stock[p.id] || 0;
+      if (st0 > 0) {
+        const qty = Math.min(irnd(1, 4), st0);   // panier de 1 à 4 articles par client
+        b.stock[p.id] = st0 - qty;
         const unit = promoOn ? +(b.prices[p.id] * 0.9).toFixed(2) : b.prices[p.id];
-        rev += unit; sold++; b.counters[p.id] = (b.counters[p.id] || 0) + 1;
-        if (sold <= 3) bizFeed(b, 'Vente ' + p.n, unit);
+        rev += unit * qty; sold += qty; b.counters[p.id] = (b.counters[p.id] || 0) + qty;
+        if (k === 0) bizFeed(b, 'Vente ' + p.n + ' ×' + qty, unit * qty);
         maybeSaleFeed(p.n, unit, b.name);
       } else b.rep = Math.max(5, b.rep - 0.05);
+    }
+    /* coulage de caisse : salariés malhonnêtes */
+    if (traitCount(b, 'voleur') > 0 && Math.random() < 0.008 * traitCount(b, 'voleur')) {
+      const leak = rnd(20, 80);
+      rev = Math.max(0, rev - leak);
+      bizFeed(b, 'Coulage de caisse', -leak);
     }
     /* alerte stock épuisé (limitée à 1 / 90 s / entreprise) */
     const totalStock = bt.prods.reduce((a, p) => a + (b.stock[p.id] || 0), 0);
@@ -779,14 +826,14 @@ function tickBiz(b, bi, info, now, af) {
       UI.toast('📉 « ' + esc(b.name) + ' » : stock épuisé, les clients repartent !', 'warn');
       FX.sound('warn');
     }
-    rev *= af;
-    const repGain = (1 + 0.4 * upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b, 'enseigne') ? 1.5 : 1) * skillBonus('rep');
+    rev *= af * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul();
+    const repGain = (1 + 0.4 * upLvl(b, b.type === 'boulangerie' ? 'decor' : 'rayons')) * (perk(b, 'enseigne') ? 1.5 : 1) * skillBonus('rep') * (1 + 0.05 * traitCount(b, 'sympa'));
     b.rep = clamp(b.rep + (sold ? 0.02 * sold * repGain : -0.03), 5, 100);
     if (rev > 0) { receive(rev, 'Ventes — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
     G.stats.sales += sold; if (sold) mission('sell', sold);
-    /* démarque : vols en rayon si pas de vidéosurveillance */
+    /* démarque : vols en rayon (vidéosurveillance, SI, chef de rayon) */
     const totalSt = bt.prods.reduce((a2, pd) => a2 + (b.stock[pd.id] || 0), 0);
-    if (totalSt > 0 && Math.random() < 0.02 * (1 - 0.6 * upLvl(b, 'secu'))) {
+    if (totalSt > 0 && Math.random() < 0.02 * (1 - 0.6 * upLvl(b, 'secu')) * (postFilled(b, 'info') ? 0.7 : 1) * (postFilled(b, 'chefrayon') ? 0.5 : 1)) {
       const pdv = pickProd(b);
       if (pdv && (b.stock[pdv.id] || 0) > 0) {
         const n = Math.min(b.stock[pdv.id], irnd(1, 2));
@@ -794,32 +841,26 @@ function tickBiz(b, bi, info, now, af) {
         bizFeed(b, 'Vols en rayon', -n);
       }
     }
-    const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
-    if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   else if (b.type === 'immobilier') {
     if (upLvl(b, 'vitrine') && W.t % 60 === 0) b.mandats = (b.mandats || 0) + upLvl(b, 'vitrine');
     let rev = (b.mandats || 0) * rnd(0.8, 2.2) * (1 + 0.25 * upLvl(b, 'reseau')) * (1 + 0.2 * upLvl(b, 'reno')) * (1 + 0.05 * b.emps.length) * localMul * boostMul('immobilier') * weatherMul('immobilier');
-    rev *= af;
+    rev *= af * (postFilled(b, 'juriste') ? 1.2 : 1) * (postFilled(b, 'dg') ? 1.2 : 1) * b2bMul() * (staffed ? 1 : 0);
     if (rev > 0) { receive(rev, 'Commissions — ' + b.name, 'biz'); info.rev += rev; b.rev += rev; b.profit = num(b.profit, 0) + rev; revTick = rev; }
-    const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
-    if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   else if (b.type === 'banque') {
     const fees = b.accounts * (3 + 0.6 * upLvl(b, 'gab')) / 60 * (perk(b, 'fidelite') ? 1.1 : 1);
     const loanInc = b.loans * (b.tauxCredit + 0.5 * upLvl(b, 'trader')) / 100 / 3600 * (1 + 0.35 * upLvl(b, 'risque'));
     const depCost = b.deposits * b.tauxLivret / 100 / 3600;
-    if (Math.random() < 0.05 + b.mkt * 0.012 + 0.02 * upLvl(b, 'app') + 0.01 * b.emps.length + (perk(b, 'pub') ? 0.03 : 0)) b.accounts += irnd(1, 3);
+    if (staffed && Math.random() < 0.05 + b.mkt * 0.012 + 0.02 * upLvl(b, 'app') + 0.01 * b.emps.length + (perk(b, 'pub') ? 0.03 : 0)) b.accounts += irnd(1, 3);
     b.deposits += b.accounts * rnd(0.4, 2.2);
     const dem = b.tauxCredit < 5 ? 1400 : (b.tauxCredit < 8 ? 750 : 220);
     b.loans += dem * Math.random();
-    if (Math.random() < 0.008 * (1 + 0.5 * upLvl(b, 'risque')) * (1 - 0.25 * upLvl(b, 'secu'))) { const def = b.loans * rnd(0.005, 0.015); b.loans = Math.max(0, b.loans - def); bizFeed(b, 'Défaut de crédit', -def); }
-    let net = (fees + loanInc - depCost) * af;
+    if (Math.random() < 0.008 * (1 + 0.5 * upLvl(b, 'risque')) * (1 - 0.25 * upLvl(b, 'secu')) * (postFilled(b, 'analyste') ? 0.6 : 1)) { const def = b.loans * rnd(0.005, 0.015); b.loans = Math.max(0, b.loans - def); bizFeed(b, 'Défaut de crédit', -def); }
+    let net = (fees + loanInc - depCost) * af * (postFilled(b, 'dg') ? 1.2 : 1) * (staffed ? 1 : 0);
     if (net >= 0) { receive(net, 'PNB — ' + b.name, 'biz'); info.rev += net; revTick = net; }
     else { pay(-net, 'Charge — ' + b.name, 'out'); info.chg += -net; }
     b.rev += Math.max(0, net); b.profit = num(b.profit, 0) + net;
-    const wages = b.emps.reduce((a, e) => a + num(e.h, 0) / 60, 0);
-    if (wages > 0) { pay(wages, 'Salaires — ' + b.name, 'out'); info.chg += wages; b.profit -= wages; b.wagesTotal += wages; }
   }
   b.hist.push(revTick); if (b.hist.length > 60) b.hist.shift();
 }
@@ -829,6 +870,15 @@ const SLOTS = [
   { n: 'Matin (rush)', m: 1.3 }, { n: 'Midi', m: 0.9 }, { n: 'Après-midi', m: 1.1 }, { n: 'Soir', m: 1.25 }
 ];
 function curSlot() { return SLOTS[Math.floor(W.t / 15) % 4]; }
+function postesOf(b) { return (DATA.postes.commun || []).concat(DATA.postes[b.type] || []); }
+function postFilled(b, id) { return !!(b.posts && b.posts[id]); }
+function postsSalary(b) { return postesOf(b).reduce((a, po) => a + (postFilled(b, po.id) ? po.sal : 0), 0); }
+function traitCount(b, t) { return (b.emps || []).reduce((a, e) => a + (e.trait === t ? 1 : 0), 0); }
+function b2bMul() {
+  let m = 1;
+  ((G.b2b && G.b2b.active) || []).forEach(c => { if (c.dir === 'out' && c.until > Date.now()) m += num(c.pct, 0, 0, 20) / 100; });
+  return m;
+}
 function bizFeed(b, l, a) {
   if (!b.feed) b.feed = [];
   b.feed.push({ t: Date.now(), l, a });
@@ -868,8 +918,19 @@ function monthly(info) {
   if (G.bank.livret > 0 && rate > 0) { const i = G.bank.livret * rate / 100 / 12; G.bank.livret = Math.min(22950, G.bank.livret + i); pushJ('Intérêts Livret A', i, 'in'); }
   if (G.bank.cardPremium && G.bank.compte > 0) { const ip = G.bank.compte * 0.005 / 12; G.bank.compte += ip; pushJ('Intérêts compte Premium', ip, 'in'); }
   G.insurances.forEach(id => { const a = DATA.insurers.find(x => x.id === id); if (!a) return; pay(a.m, 'Assurance — ' + a.n, 'out'); info.chg += a.m; });
-  const emp = G.biz.reduce((a, b) => a + b.emps.length, 0);
-  if (emp > 0) { const u = emp * 45; pay(u, 'URSSAF', 'tax'); info.chg += u; info.tax += u; G.stats.tax += u; }
+  G.biz.forEach(b => {
+    const staff = b.emps.reduce((a, e) => a + num(e.h, 10, 5, 500) * 100, 0);
+    const pst = postsSalary(b);
+    let urs = (staff + pst) * 0.15;
+    if (postFilled(b, 'compta')) urs *= 0.85;
+    const tot = staff + pst + urs;
+    if (tot > 0) {
+      pay(tot, 'Paie & charges — ' + b.name, 'out');
+      info.chg += tot; info.tax += urs; G.stats.tax += urs;
+      b.profit = num(b.profit, 0) - tot; b.wagesTotal = num(b.wagesTotal, 0) + tot;
+      bizFeed(b, 'Paie mensuelle (' + b.emps.length + ' salarié·s + postes)', -tot);
+    }
+  });
 }
 
 function fireEvent() {
@@ -1222,10 +1283,18 @@ const A = {
     const b = A.bizAt(d); if (!b) return;
     const max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
     if (b.emps.length >= max) return UI.toast('Effectif complet (' + max + ').', 'warn');
-    T.cands = Array.from({ length: 4 }, () => ({ n: W.npcs[irnd(0, W.npcs.length - 1)].n, h: +rnd(12, 20).toFixed(1) }));
-    UI.modal('<h2>Recruter — ' + esc(b.name) + '</h2><div class="m-sub">4 candidats se présentent. Salaire horaire négocié.</div>' +
-      T.cands.map((c, i) => '<div class="rowline cand-row"><div class="cand-ava">' + esc(c.n.split(' ').map(x => x[0]).join('').slice(0, 2)) + '</div><div style="flex:1"><div class="lbl">' + esc(c.n) + '</div><div class="det">' + eur(c.h) + '/h · motivé·e</div></div>' +
-        '<button class="btn btn-primary btn-sm" data-act="hireConfirm" data-b="' + d.b + '" data-i="' + i + '">Embaucher</button></div>').join('') +
+    T.cands = Array.from({ length: 4 }, () => {
+      const tr = DATA.traits[irnd(0, DATA.traits.length - 1)];
+      return { n: W.npcs[irnd(0, W.npcs.length - 1)].n, h: +rnd(12, 20).toFixed(1), trait: tr.id };
+    });
+    UI.modal('<h2>Recruter — ' + esc(b.name) + '</h2><div class="m-sub">4 candidats se présentent. Coût mensuel : salaire × 100 h (+15 % URSSAF).</div>' +
+      T.cands.map((c, i) => {
+        const tr = DATA.traits.find(t => t.id === c.trait) || DATA.traits[0];
+        return '<div class="rowline cand-row"><div class="cand-ava">' + esc(c.n.split(' ').map(x => x[0]).join('').slice(0, 2)) + '</div>' +
+        '<div style="flex:1"><div class="lbl">' + esc(c.n) + ' <span class="trait-badge">' + tr.ico + ' ' + esc(tr.n) + '</span></div>' +
+        '<div class="det">' + eur(c.h) + '/h · ' + eur(c.h * 100) + '/mois · <i>' + esc(tr.e) + '</i></div></div>' +
+        '<button class="btn btn-primary btn-sm" data-act="hireConfirm" data-b="' + d.b + '" data-i="' + i + '">Embaucher</button></div>';
+      }).join('') +
       '<div class="m-actions"><button class="btn btn-ghost" data-act="closeModal">Fermer</button></div>');
   },
   hireConfirm(d) {
@@ -1233,7 +1302,7 @@ const A = {
     const c = T.cands && T.cands[idxOk(d.i, (T.cands || []).length)]; if (!c) return;
     const max = (DATA.bizTypes[b.type] || {}).maxEmp || 4;
     if (b.emps.length >= max) return UI.toast('Effectif complet.', 'warn');
-    b.emps.push({ n: c.n, h: c.h });
+    b.emps.push({ n: c.n, h: c.h, trait: c.trait || 'bosseur' });
     UI.closeModal(); FX.sound('win');
     UI.toast('🤝 ' + esc(c.n) + ' rejoint l’équipe !', 'good');
     save(); refresh();
@@ -1244,6 +1313,46 @@ const A = {
     const e = b.emps.splice(i, 1)[0];
     FX.sound('back');
     UI.toast((e ? esc(e.n) : 'Salarié') + ' a quitté l’entreprise.', 'warn'); refresh();
+  },
+  b2bAccept(d) {
+    DB.authFetch('/api/b2b/accept', { method: 'POST', body: JSON.stringify({ id: d.id }) }).then(j => {
+      if (j && j.ok) { UI.confetti(); FX.sound('win'); UI.toast('🤝 Contrat B2B accepté !', 'good'); }
+      else { FX.sound('error'); UI.toast((j && j.err) || 'Refus serveur.', 'bad'); }
+      T.b2bAt = 0; UI.render(true);
+    }).catch(() => UI.toast('Serveur injoignable.', 'bad'));
+  },
+  b2bRefuse(d) {
+    DB.authFetch('/api/b2b/refuse', { method: 'POST', body: JSON.stringify({ id: d.id }) }).then(() => {
+      FX.sound('back'); UI.toast('Offre refusée.', '');
+      T.b2bAt = 0; UI.render(true);
+    }).catch(() => UI.toast('Serveur injoignable.', 'bad'));
+  },
+  b2bOfferSend(d) {
+    const to = (document.getElementById('b2bTo') || {}).value || d.to || '';
+    const pct = +(d.pct || ((document.getElementById('b2bPct') || {}).value || 5));
+    DB.authFetch('/api/b2b/offer', { method: 'POST', body: JSON.stringify({ to, pct }) }).then(j => {
+      if (j && j.ok) { FX.sound('win'); UI.toast('📨 Offre envoyée (frais à l’acceptation : ' + eur(j.fee) + ').', 'good'); }
+      else { FX.sound('error'); UI.toast((j && j.err) || 'Envoi impossible.', 'bad'); }
+      T.b2bAt = 0; UI.render(true);
+    }).catch(() => UI.toast('Serveur injoignable.', 'bad'));
+  },
+  hirePost(d) {
+    const b = A.bizAt(d); if (!b) return;
+    const po = postesOf(b).find(x => x.id === d.p); if (!po) return;
+    if (postFilled(b, po.id)) return UI.toast('Poste déjà pourvu.', 'warn');
+    if (!b.posts) b.posts = {};
+    b.posts[po.id] = { n: W.npcs[irnd(0, W.npcs.length - 1)].n, since: Date.now() };
+    UI.confetti(); FX.sound('win');
+    UI.toast('🎖 ' + esc(po.n) + ' recruté·e : ' + esc(b.posts[po.id].n) + ' (' + eur(po.sal) + '/mois)', 'good');
+    save(); refresh();
+  },
+  firePost(d) {
+    const b = A.bizAt(d); if (!b) return;
+    const po = postesOf(b).find(x => x.id === d.p); if (!po || !postFilled(b, po.id)) return;
+    delete b.posts[po.id];
+    FX.sound('back');
+    UI.toast(po.n + ' : poste supprimé.', 'warn');
+    save(); refresh();
   },
   buyMandat(d) {
     const b = A.bizAt(d); if (!b || b.type !== 'immobilier') return;
@@ -1725,7 +1834,7 @@ function offerModal() {
     '<button class="btn btn-primary" data-act="sign">Signer en ' + (T.offerMode === 'plein' ? 'temps plein' : 'temps partiel') + '</button></div>');
 }
 
-const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel', 'setMargin', 'restockGrocery', 'shopSel'];
+const GUARDED = ['eat', 'buyFood', 'train', 'offer', 'sign', 'openCreate', 'createBiz', 'buyMat', 'craft', 'buyStock', 'priceAdj', 'hire', 'hireConfirm', 'fire', 'buyMandat', 'bankAdj', 'buyHome', 'rentHome', 'cancelRent', 'sellHome', 'rentOut', 'buyCar', 'sellCar', 'serviceCar', 'deposit', 'withdraw', 'toLivret', 'fromLivret', 'loanTake', 'loanRepay', 'illDo', 'bribe', 'upgrade', 'mktDo', 'orderFill', 'lotto', 'buySkill', 'claimMission', 'claimQuest', 'claimDaily', 'buyVaccine', 'bookAppointment', 'openBank', 'leaveBank', 'doSendMoney', 'doAnnounce', 'insure', 'buyPack', 'negotiate', 'moveMoney', 'sendToPlayer', 'toggleFreeze', 'setPlafond', 'claimPremium', 'openTerminal', 'trainExec', 'buyCarExec', 'buyHomeExec', 'createBizExec', 'nfcCancel', 'setMargin', 'restockGrocery', 'shopSel', 'hirePost', 'firePost', 'b2bAccept', 'b2bRefuse', 'b2bOfferSend'];
 
 /* ── sauvegarde ── */
 let saveInFlight = false;

@@ -218,6 +218,30 @@ try {
   await sleep(1500); // laisse le graphe s'animer + ventes tourner
   await shot('16-entreprise-overview');
 
+  // ── v11.7 : RH (arrêt sans salarié, embauche via UI, poste DG) + onglet B2B ──
+  await page.click('[data-act="bizTab"][data-t="hr"]');
+  await sleep(600);
+  const stoppedVisible = await page.evaluate(() => !!document.querySelector('.stopped-banner'));
+  if (!stoppedVisible) errors.push('RH : bannière « à l’arrêt » absente sans salarié');
+  await page.click('[data-act="hire"]');
+  await sleep(500);
+  await shot('18-rh-candidats');
+  await page.click('[data-act="hireConfirm"]');
+  await sleep(600);
+  const emps = await page.evaluate(() => G.biz[0].emps.length);
+  if (emps !== 1) errors.push('RH : embauche UI échouée (' + emps + ')');
+  const traitOk = await page.evaluate(() => !!(G.biz[0].emps[0] && G.biz[0].emps[0].trait));
+  if (!traitOk) errors.push('RH : trait de caractère manquant');
+  await shot('18b-rh-salaries');
+  await page.click('[data-act="hirePost"][data-p="dg"]');
+  await sleep(600);
+  const dg = await page.evaluate(() => !!(G.biz[0].posts && G.biz[0].posts.dg));
+  if (!dg) errors.push('RH : poste DG non pourvu via UI');
+  await shot('18c-rh-postes');
+  await page.click('[data-act="bizTab"][data-t="b2b"]');
+  await sleep(800);
+  await shot('19-b2b');
+
   // économie : graphiques + classement
   await page.click('[data-id="economie"]');
   await sleep(2500);
