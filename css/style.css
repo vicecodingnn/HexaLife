@@ -1090,27 +1090,32 @@ table.t tr:nth-child(even) td{background:rgba(255,255,255,.015)}
 .fkey:active{transform:translateY(2px);box-shadow:0 1px 0 #10151a}
 .fkey.danger{border-color:#5c2a24;color:#f0a79b}
 .fkey.cold{border-color:#2a4a5c;color:#a8d8f0}
-.atm-bottom{display:flex;gap:10px;margin-top:14px;align-items:stretch}
-.atm-slot{flex:1;height:44px;border-radius:8px;background:linear-gradient(180deg,#05070a,#0b0f14);box-shadow:inset 0 4px 10px rgba(0,0,0,.9);
-  display:flex;align-items:center;justify-content:center;position:relative;transition:box-shadow .3s;cursor:pointer}
-.atm-slot span,.atm-printer span,.atm-cash span{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#3d4a55}
-.atm-slot::after{content:"";position:absolute;left:12%;right:12%;top:50%;height:6px;border-radius:3px;background:#04060a;transition:all .3s}
-.atm-slot.hover{box-shadow:inset 0 4px 10px rgba(0,0,0,.9), 0 0 20px rgba(232,176,75,.5)}
-.atm-slot.glow::after{background:var(--green);box-shadow:0 0 12px var(--green)}
-.atm-printer{flex:1;height:44px;border-radius:8px;background:linear-gradient(180deg,#0a0d11,#10141a);box-shadow:inset 0 4px 10px rgba(0,0,0,.8);
-  display:flex;align-items:flex-start;justify-content:center;position:relative;overflow:visible}
-.atm-printer::after{content:"";position:absolute;left:14%;right:14%;top:10px;height:4px;border-radius:2px;background:#04060a}
-.atm-cash{flex:1;height:44px;border-radius:8px;background:linear-gradient(180deg,#0a0d11,#10141a);box-shadow:inset 0 4px 10px rgba(0,0,0,.8);
-  display:flex;align-items:center;justify-content:center;position:relative;transition:all .3s}
-.atm-cash::after{content:"";position:absolute;left:14%;right:14%;top:50%;height:8px;border-radius:3px;background:#04060a;transition:all .3s}
-.atm-cash.open{box-shadow:inset 0 4px 10px rgba(0,0,0,.8), 0 0 18px rgba(75,179,128,.4)}
-.atm-cash.open::after{background:#123b2c;box-shadow:0 0 10px rgba(75,179,128,.6)}
-.atm-bill{position:absolute;left:50%;top:8px;width:34px;height:16px;margin-left:-17px;border-radius:2px;
+.atm-bottom{display:flex;gap:10px;margin-top:64px}
+.atm-zone{flex:1;min-height:78px;border-radius:10px;background:linear-gradient(180deg,#0a0d11,#12171d);
+  box-shadow:inset 0 4px 12px rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;gap:9px;
+  padding:13px 8px 9px;position:relative;transition:box-shadow .3s}
+.atm-zone span{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#46525d}
+.z-slit{width:74%;height:7px;border-radius:4px;background:#04060a;box-shadow:inset 0 2px 5px rgba(0,0,0,.95);transition:all .3s}
+.atm-slot{cursor:pointer}
+.atm-slot.hover{box-shadow:inset 0 4px 12px rgba(0,0,0,.85), 0 0 22px rgba(232,176,75,.5)}
+.atm-slot.hover .z-slit{background:#3a2f14}
+.atm-slot.glow .z-slit{background:var(--green);box-shadow:0 0 12px var(--green)}
+.atm-printer .z-slit{width:62%}
+.atm-cash .z-slit{width:68%;height:9px}
+.atm-cash.open{box-shadow:inset 0 4px 12px rgba(0,0,0,.85), 0 0 18px rgba(75,179,128,.45)}
+.atm-cash.open .z-slit{background:#123b2c;box-shadow:0 0 10px rgba(75,179,128,.6)}
+/* ticket : sort de la fente et monte dans la bande libre (jamais sur le texte) */
+.atm-receipt{position:absolute;left:50%;top:-50px;transform:translateX(-50%);width:132px;margin:0;
+  animation:receiptPrint .9s cubic-bezier(.2,.9,.3,1) both;pointer-events:none;z-index:6}
+@keyframes receiptPrint{from{clip-path:inset(100% 0 0 0);transform:translateX(-50%) translateY(16px)}to{clip-path:inset(0 0 0 0);transform:translateX(-50%) translateY(0)}}
+.atm-receipt.fade{transition:opacity .6s;opacity:0}
+/* billets : sortent du tiroir dans la bande libre */
+.atm-bill{position:absolute;left:50%;top:-26px;width:36px;height:17px;margin-left:-18px;border-radius:2px;
   background:linear-gradient(135deg,#7fb98f,#4bb380);color:#06281a;font-family:var(--mono);font-size:10px;font-weight:800;
   display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(0,0,0,.5);
-  animation:billOut 1.8s cubic-bezier(.2,.9,.3,1) both}
+  animation:billOut 1.9s cubic-bezier(.2,.9,.3,1) both;pointer-events:none;z-index:6}
 .atm-bill:nth-child(2n){background:linear-gradient(135deg,#e8c06a,#c99a3a)}
-@keyframes billOut{0%{transform:translateY(14px) rotate(0);opacity:0}25%{opacity:1}100%{transform:translateY(-46px) rotate(14deg);opacity:0}}
+@keyframes billOut{0%{transform:translateY(20px) rotate(0);opacity:0}30%{opacity:1}100%{transform:translateY(-14px) rotate(10deg);opacity:0}}
 .atm-receipt{position:absolute;left:50%;top:-6px;transform:translateX(-50%);width:150px;margin:0;
   animation:receiptPrint 1s cubic-bezier(.2,.9,.3,1) both}
 @keyframes receiptPrint{from{clip-path:inset(0 0 100% 0);transform:translateX(-50%) translateY(10px)}to{clip-path:inset(0 0 0 0);transform:translateX(-50%) translateY(-58px)}}

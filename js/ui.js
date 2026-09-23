@@ -1194,18 +1194,18 @@ const UI = (() => {
             '</div>' +
           '</div>' +
           '<div class="atm-bottom">' +
-            '<div class="atm-slot" id="atmSlot"><span>CARTE</span></div>' +
-            '<div class="atm-printer"></div>' +
-            '<div class="atm-cash"><span>BILLETS</span></div>' +
+            '<div class="atm-zone atm-slot" id="atmSlot"><i class="z-slit"></i><span>CARTE</span></div>' +
+            '<div class="atm-zone atm-printer"><i class="z-slit"></i><span>TICKETS</span></div>' +
+            '<div class="atm-zone atm-cash"><i class="z-slit"></i><span>BILLETS</span></div>' +
           '</div>' +
         '</div>' +
-        '<div class="atm-card" id="atmCard"><div class="pcard ' + skin + ' nfc-pcard">' +
-          '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + (which === 'livret' ? 'LIVRET A' : 'HEXAPAY') + '</span></div>' +
-          '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
-          '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div></div>' +
-        '</div></div>' +
         '<div class="atm-hint" id="atmHint">🖱 Saisissez votre carte et <b>insérez-la dans la fente CARTE</b> du distributeur.</div>' +
-      '</div>';
+      '</div>' +
+      '<div class="atm-card" id="atmCard"><div class="pcard ' + skin + ' nfc-pcard">' +
+        '<div class="bc-shine"></div><div class="bc-top"><div class="bc-chip"></div><span class="bc-brand">' + (which === 'livret' ? 'LIVRET A' : 'HEXAPAY') + '</span></div>' +
+        '<div class="bc-num">•••• •••• •••• ' + (which === 'livret' ? '7701' : '4242') + '</div>' +
+        '<div class="bc-bottom"><div><div class="bc-lbl">Titulaire</div><div class="bc-name">' + esc(G.name) + '</div></div></div>' +
+      '</div></div>';
     document.body.appendChild(ov);
     const card = ov.querySelector('#atmCard');
     const slot = ov.querySelector('#atmSlot');
@@ -1215,9 +1215,14 @@ const UI = (() => {
       const sr = slot.getBoundingClientRect();
       return { x: Math.min(window.innerWidth - 240, sr.right + 90), y: Math.max(20, sr.top - 40) };
     };
-    const h0 = home();
-    card.style.left = h0.x + 'px'; card.style.top = h0.y + 'px';
-    term.home = h0;
+    const placeHome = () => {
+      if (!term) return; // GAB déjà fermé : rien à repositionner
+      const h0 = home();
+      term.home = h0;
+      if (!term.dragging && !term.inserted) { card.style.left = h0.x + 'px'; card.style.top = h0.y + 'px'; }
+    };
+    placeHome();
+    setTimeout(placeHome, 480); // après l'animation d'entrée de la scène
 
     const insertCard = () => {
       if (!term || term.inserted) return;
@@ -1247,11 +1252,11 @@ const UI = (() => {
     term.insertCard = insertCard;
 
     if (!reducedMotion()) {
-      let ox = 0, oy = 0;
+      let stX = 0, stY = 0, dnX = 0, dnY = 0;
       const onMove = e => {
         if (!term || !term.dragging || term.inserted) return;
-        card.style.left = (e.clientX - ox) + 'px';
-        card.style.top = (e.clientY - oy) + 'px';
+        card.style.left = (stX + (e.clientX - dnX)) + 'px';
+        card.style.top = (stY + (e.clientY - dnY)) + 'px';
         const sr = slot.getBoundingClientRect();
         const over = e.clientX > sr.left - 16 && e.clientX < sr.right + 16 && e.clientY > sr.top - 16 && e.clientY < sr.bottom + 16;
         slot.classList.toggle('hover', over);
@@ -1268,8 +1273,9 @@ const UI = (() => {
       card.addEventListener('pointerdown', e => {
         if (!term || term.inserted) return;
         term.dragging = true;
-        const r = card.getBoundingClientRect();
-        ox = e.clientX - r.left; oy = e.clientY - r.top;
+        stX = parseFloat(card.style.left) || 0;
+        stY = parseFloat(card.style.top) || 0;
+        dnX = e.clientX; dnY = e.clientY;
         card.classList.add('drag');
         e.preventDefault();
       });
@@ -1667,8 +1673,8 @@ const UI = (() => {
 
   function rPlus() {
     const stripe = !!(DB.hasStripe && DB.hasStripe());
-    return '<h1>Boutique +</h1><div class="sub">' + (stripe ? 'Paiement Stripe sécurisé : la récompense est créditée <b class="pos">automatiquement</b> dès confirmation du paiement (webhook signé). Aucune manipulation manuelle : infalsifiable.' : 'Les paiements réels sont <b>désactivés</b> sur ce serveur : sans vérification Stripe côté serveur, aucun pack ne peut être crédité — personne ne peut se donner d’argent.') + '</div>' +
-      (stripe ? '' : '<div class="panel" style="border-color:var(--gold-dk)"><div class="rowline" style="border:0"><div><div class="lbl">🔒 Vérification des paiements</div><div class="det">Pour activer la boutique : renseignez <span class="mono">STRIPE_SECRET_KEY</span> et <span class="mono">STRIPE_WEBHOOK_SECRET</span> côté serveur (Render). Le crédit devient alors automatique et vérifié par signature Stripe.</div></div></div></div>') +
+    return '<h1>Boutique +</h1><div class="sub">' + (stripe ? 'Packs crédités automatiquement sur votre compte de jeu après paiement.' : 'Module de paiement non activé sur ce serveur.') + '</div>' +
+      (stripe ? '' : '<div class="panel"><div class="rowline" style="border:0"><div><div class="lbl">Boutique indisponible</div><div class="det">Le module de paiement n’est pas activé sur ce serveur.</div></div></div></div>') +
       '<div class="pack-grid">' + DATA.packs.map((p, k) =>
         '<div class="pack-card" style="animation-delay:' + (k * 0.08) + 's">' + (p.best ? '<span class="pack-best">MEILLEURE OFFRE</span>' : '') +
         '<div class="pack-glow"></div><div class="pack-amt">' + eur0(p.amount) + '</div><div class="pack-name">' + esc(p.n) + '</div>' +
