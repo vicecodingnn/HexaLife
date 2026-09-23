@@ -142,7 +142,10 @@ run('actions de base', `
   A.rentOut({i:'0'}); A.rentOut({i:'9'});
   A.rentHome({i:'0'}); A.rentHome({i:'0'});
   A.cancelRent();
-  A.buyPack({id:'p1'}); A.confirmPack(); A.cancelPack();
+  const balPack = balance();
+  A.buyPack({id:'p1'}); // sans Stripe configuré : refus, aucun crédit possible
+  if (balance() !== balPack) throw new Error('FAILLE : pack crédité sans Stripe');
+  if ('confirmPack' in A || 'cancelPack' in A) throw new Error('FAILLE : confirmation manuelle encore présente');
   A.openBank({id:'ce', name:"Caisse d'Épargne", rate:'3.0'});
   G.cash = 100000;
   A.setBankAmt({v:'100'}); A.deposit();
@@ -240,7 +243,6 @@ run('régressions v11.1', `
   G.pendingPack = 'p1';
   applyOp({ type: 'packCredit', amount: 5000, pack: 'p1' });
   if (Math.abs(balance() - (bal0 + 5000)) > 0.01) throw new Error('packCredit non crédité');
-  if (G.pendingPack !== null) throw new Error('pendingPack non purgé');
 
   // 9) nettoyage : les sections suivantes repartent d'un état déterministe
   G.jobs = []; G.biz = []; G.inv = {};

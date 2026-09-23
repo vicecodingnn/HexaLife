@@ -97,7 +97,6 @@ function applyOp(op) {
     }
     else if (op.type === 'packCredit') {
       const pk = DATA.packs.find(x => x.id === op.pack);
-      G.pendingPack = null;
       receive(num(op.amount, 0, 0, 1e9), 'Pack Stripe — ' + (pk ? pk.n : op.pack), 'in');
       G.stats.premium = num(G.stats.premium, 0) + num(op.amount, 0, 0, 1e9);
       UI.cardFx('Paiement Stripe confirmé', '+' + eur0(op.amount));
@@ -154,7 +153,7 @@ function newGame(name) {
     biz: [], ill: { unlocked: false, heat: 0, cd: {} },
     jail: 0, nextEvent: Date.now() + 120000, boost: null,
     missions: { list: [], refreshAt: 0 }, quests: { list: [], refreshAt: 0 },
-    journal: [], tuto: 0, skills: {}, pendingPack: null,
+    journal: [], tuto: 0, skills: {},
     ach: {}, daily: { lastDay: '', streak: 0 },
     market: { mult: {}, until: 0 }, histBal: [], carState: {}, sportCd: 0,
     stats: {
@@ -283,7 +282,6 @@ function sanitize(s) {
     if (l > 0) out.skills[sk.id] = l;
   }
 
-  out.pendingPack = DATA.packs.some(p => p.id === s.pendingPack) ? s.pendingPack : null;
 
   out.ach = {};
   if (s.ach && typeof s.ach === 'object') for (const a of DATA.ach) if (num(s.ach[a.id], 0) > 0) out.ach[a.id] = num(s.ach[a.id], 0);
@@ -1547,35 +1545,23 @@ const A = {
     save(); maybeAch(); refresh();
   },
 
+  /* Boutique : AUCUNE confirmation manuelle. Le crédit n'arrive que par le
+     webhook Stripe signé (applyOp 'packCredit'). Sans Stripe configuré côté
+     serveur, les paiements sont désactivés : impossible de se créditer soi-même. */
   buyPack(d) {
     const p = DATA.packs.find(x => x.id === d.id); if (!p) return;
-    if (DB.hasStripe && DB.hasStripe()) {
-      UI.toast('⏳ Ouverture de la session de paiement sécurisée…', '');
-      DB.authFetch('/api/checkout', { method: 'POST', body: JSON.stringify({ pack: p.id }) }).then(j => {
-        if (j && j.ok && j.url) {
-          G.pendingPack = p.id;
-          window.open(j.url, '_blank', 'noopener');
-          UI.toast('🧾 Payez dans l’onglet Stripe : la récompense sera créditée AUTOMATIQUEMENT dès confirmation.', 'good');
-          refresh();
-        } else { FX.sound('error'); UI.toast((j && j.err) || 'Stripe indisponible.', 'bad'); }
-      }).catch(() => { FX.sound('error'); UI.toast('Stripe injoignable.', 'bad'); });
-      return;
+    if (!(DB.hasStripe && DB.hasStripe())) {
+      FX.sound('error');
+      return UI.toast('🔒 Paiements désactivés : la vérification Stripe n’est pas configurée sur ce serveur (protection anti-fraude).', 'warn');
     }
-    G.pendingPack = p.id;
-    window.open(p.stripe, '_blank', 'noopener');
-    UI.toast('Paiement Stripe ouvert. Cliquez « J’ai payé » une fois réglé.', 'good'); refresh();
+    UI.toast('⏳ Ouverture de la session de paiement sécurisée…', '');
+    DB.authFetch('/api/checkout', { method: 'POST', body: JSON.stringify({ pack: p.id }) }).then(j => {
+      if (j && j.ok && j.url) {
+        window.open(j.url, '_blank', 'noopener');
+        UI.toast('🧾 Réglez dans l’onglet Stripe : la récompense sera créditée AUTOMATIQUEMENT à confirmation.', 'good');
+      } else { FX.sound('error'); UI.toast((j && j.err) || 'Stripe indisponible.', 'bad'); }
+    }).catch(() => { FX.sound('error'); UI.toast('Stripe injoignable.', 'bad'); });
   },
-  confirmPack() {
-    if (!G.pendingPack) return UI.toast('Aucun paiement en attente.', 'warn');
-    const p = DATA.packs.find(x => x.id === G.pendingPack); G.pendingPack = null;
-    if (!p) return UI.toast('Pack inconnu.', 'bad');
-    receive(p.amount, 'Pack — ' + p.n, 'in'); G.stats.premium += p.amount;
-    UI.cardFx('Pack ' + p.n, '+' + eur0(p.amount));
-    UI.confetti(); FX.sound('win');
-    UI.toast('💎 +' + eur0(p.amount) + ' crédités !', 'good');
-    save(); refresh();
-  },
-  cancelPack() { G.pendingPack = null; UI.toast('Achat annulé.', ''); refresh(); },
 
   deleteAccount() {
     if (!confirm('SUPPRIMER DÉFINITIVEMENT votre compte et toutes vos données ?')) return;

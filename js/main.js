@@ -20,25 +20,15 @@
   makeCity(el('authSky'), 30, 20, 110);
   makeCity(el('appSky'), 34, 30, 140);
 
-  /* ── INTRO CINÉMATIQUE v11.4 : étoiles, lampadaires, logo lettre par lettre, phases ── */
-  (function buildIntro() {
-    const stars = el('inStars');
-    if (stars) {
-      let h = '';
-      for (let i = 0; i < 70; i++) h += '<i style="left:' + (Math.random() * 100).toFixed(1) + '%;top:' + (Math.random() * 100).toFixed(1) + '%;animation-delay:' + (Math.random() * 3.4).toFixed(2) + 's;transform:scale(' + (0.6 + Math.random()).toFixed(2) + ')"></i>';
-      stars.innerHTML = h;
-    }
-    const lamps = el('inLamps');
-    if (lamps) {
-      let h = '';
-      for (let i = 0; i < 8; i++) h += '<i style="left:' + (6 + i * 12.5) + '%"></i>';
-      lamps.innerHTML = h;
-    }
+  /* ── INTRO v11.5 : le titre HEXALIFE, hyper stylé, simple et sûr ── */
+  (function buildLogo() {
     const logo = el('inLogo');
-    if (logo) logo.innerHTML = 'HEXALIFE'.split('').map((ch, i) => '<span class="' + (i >= 4 ? 'gd' : '') + '" style="--i:' + i + '">' + ch + '</span>').join('');
+    if (!logo) return;
+    const sweep = logo.querySelector('.in-sweep');
+    logo.innerHTML = 'HEXALIFE'.split('').map((ch, i) =>
+      '<span class="L' + (i >= 4 ? ' gd' : '') + '" style="--i:' + i + '">' + ch + '</span>').join('');
+    if (sweep) { sweep.textContent = 'HEXALIFE'; logo.appendChild(sweep); }
   })();
-  const TAG = 'Simulateur de vie · Économie française · Temps réel';
-  let tagIdx = 0, tagTimer = 0;
 
   const STEPS = [
     [0,  'Connexion à la base de données…'],
@@ -59,32 +49,14 @@
     else prog = Math.min(100, prog + 1.2 + Math.random() * 3.2);
     el('loadFill').style.width = prog + '%';
     el('loadPct').textContent = Math.floor(prog) + '%';
-    const spark = document.querySelector('.in-load-spark');
-    if (spark) spark.style.left = 'calc(' + prog + '% - 6px)';
-    /* le marcheur et la ville avancent avec le chargement */
-    el('walker').style.left = (8 + prog * 0.72) + '%';
-    el('cityNear').style.transform = 'translateX(' + (-prog * 4) + 'px)';
-    el('cityFar').style.transform = 'translateX(' + (-prog * 1.6) + 'px)';
-    /* phases cinématiques */
-    if (prog >= 6) intro.classList.add('p1');
-    if (prog >= 28) intro.classList.add('p2');
-    if (prog >= 55) intro.classList.add('p3');
-    if (prog >= 78 && !tagTimer) {
-      intro.classList.add('p4');
-      tagTimer = setInterval(() => {
-        tagIdx = Math.min(TAG.length, tagIdx + 1);
-        const t = el('inTag'); if (!t) return;
-        t.textContent = TAG.slice(0, tagIdx);
-        if (tagIdx >= TAG.length) { clearInterval(tagTimer); t.classList.add('done'); }
-      }, 34);
-    }
+    if (prog >= 4) intro.classList.add('p1');      /* lettres du titre */
+    if (prog >= 35) intro.classList.add('p2');     /* tagline */
     let cur = 0; STEPS.forEach((st, i) => { if (prog >= st[0]) cur = i; });
     el('loadSteps').innerHTML = STEPS.map((st, i) =>
       '<div class="' + (i < cur ? 'ok' : i === cur ? 'cur' : '') + '">' + (i < cur ? '✓' : i === cur ? '▶' : '·') + ' ' + st[1] + '</div>').join('');
     if (prog >= 100 && !introDone) {
       introDone = true;
       clearInterval(loadTimer);
-      el('walker').classList.add('done');
       const b = el('btnStart');
       b.classList.add('ready'); b.disabled = false;
       b.textContent = DB.session() ? 'Continuer ma vie' : 'Entrer en ville';
@@ -92,18 +64,29 @@
   }, 120);
 
   el('btnStart').addEventListener('click', () => {
+    const b = el('btnStart');
+    b.classList.add('success');
     intro.classList.add('leave');
     FX.sound('win');
     setTimeout(() => {
       if (DB.session()) enterGame(DB.session(), false);
       else show('scr-auth');
-    }, 480);
+    }, 430);
   });
 
   function show(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    el(id).classList.add('active');
-    if (id === 'scr-auth') el('dbMode').textContent = DB.label();
+    const cur = document.querySelector('.screen.active');
+    const nxt = el(id);
+    if (!nxt || cur === nxt) return;
+    const activate = () => {
+      nxt.classList.add('active', 'entering');
+      setTimeout(() => nxt.classList.remove('entering'), 540);
+      if (id === 'scr-auth') el('dbMode').textContent = DB.label();
+    };
+    if (cur) {
+      cur.classList.add('leaving');
+      setTimeout(() => { cur.classList.remove('active', 'leaving'); activate(); }, 380);
+    } else activate();
   }
 
   /* ── auth animée (plus jamais de bouton bloqué) ── */
@@ -116,8 +99,19 @@
     try {
       await sleep(350);
       const r = await DB.login(el('li_user').value, el('li_pass').value);
-      if (r.err) { m.textContent = r.err; m.classList.remove('ok'); m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg'); }
-      else { m.textContent = 'Connexion réussie ✓'; m.classList.add('ok'); await sleep(300); enterGame(DB.session(), false); }
+      if (r.err) {
+        m.textContent = r.err; m.classList.remove('ok');
+        m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg');
+        btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake');
+        setTimeout(() => btn.classList.remove('shake'), 450);
+        FX.sound('error');
+      } else {
+        m.textContent = 'Connexion réussie ✓'; m.classList.add('ok');
+        btn.classList.add('success'); btn.textContent = '✓ Bienvenue…';
+        FX.sound('win');
+        await sleep(520);
+        enterGame(DB.session(), false);
+      }
     } catch (err) {
       m.textContent = 'Erreur inattendue pendant la connexion.'; m.classList.remove('ok');
     } finally { submitBtn(btn, false); }
@@ -172,9 +166,20 @@
     submitBtn(btn, true);
     try {
       await sleep(350);
-      const r = await DB.register(el('rg_user').value, el('rg_mail').value, el('rg_pass').value);
-      if (r.err) { m.textContent = r.err; m.classList.remove('ok'); m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg'); }
-      else { m.textContent = 'Citoyen créé ✓'; m.classList.add('ok'); await sleep(300); enterGame(DB.session(), true); }
+      const r = await DB.register(el('rg_user').value, el('rg_mail').value, el('rg_pass').value, el('rg_cgu').checked);
+      if (r.err) {
+        m.textContent = r.err; m.classList.remove('ok');
+        m.classList.remove('shake-msg'); void m.offsetWidth; m.classList.add('shake-msg');
+        btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake');
+        setTimeout(() => btn.classList.remove('shake'), 450);
+        FX.sound('error');
+      } else {
+        m.textContent = 'Citoyen créé ✓'; m.classList.add('ok');
+        btn.classList.add('success'); btn.textContent = '✓ Bienvenue…';
+        FX.sound('win');
+        await sleep(520);
+        enterGame(DB.session(), true);
+      }
     } catch (err) {
       m.textContent = 'Erreur inattendue pendant l’inscription.'; m.classList.remove('ok');
     } finally { submitBtn(btn, false); }

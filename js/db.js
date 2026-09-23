@@ -60,14 +60,15 @@ const DB = (() => {
       return mode;
     },
 
-    async register(u, email, p) {
+    async register(u, email, p, cgu) {
+      if (!cgu) return { err: 'Vous devez accepter les conditions d’utilisation.' };
       u = (u || '').trim();
       if (u.length < 3) return { err: 'Pseudo trop court (3 caractères minimum).' };
       if (!/^[a-zA-Z0-9_\-]+$/.test(u)) return { err: 'Pseudo : lettres, chiffres, tirets uniquement.' };
       if (!validMail(email)) return { err: 'Adresse e-mail invalide.' };
       if ((p || '').length < 4) return { err: 'Mot de passe : 4 caractères minimum.' };
       if (mode === 'api') {
-        const j = await safeApi('/api/register', { method: 'POST', body: JSON.stringify({ user: u, email, pass: p, acceptCgu: true, termsVersion: termsV }) });
+        const j = await safeApi('/api/register', { method: 'POST', body: JSON.stringify({ user: u, email, pass: p, acceptCgu: !!cgu, termsVersion: termsV }) });
         if (j.err || !j.token) return { err: j.err || 'Inscription impossible.' };
         token = j.token; localStorage.setItem(TK, token); localStorage.setItem(TKU, j.name); localStorage.setItem(SK, j.name);
         return { ok: true };

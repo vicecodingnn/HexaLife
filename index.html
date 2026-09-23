@@ -21,41 +21,19 @@
 
 <!-- ══════════ INTRO ══════════ -->
 <div id="scr-intro" class="screen active">
-  <div class="in-sky"></div>
-  <div class="in-stars" id="inStars"></div>
-  <div class="in-sun" id="introDawn"></div>
-  <div class="in-cloud c1"></div>
-  <div class="in-cloud c2"></div>
-  <div class="in-cloud c3"></div>
-  <div class="in-city far" id="cityFar"></div>
-  <div class="in-city near" id="cityNear"></div>
-  <div class="in-ground">
-    <div class="in-road"></div>
-    <div class="in-lamps" id="inLamps"></div>
-  </div>
-  <div class="in-car carA"></div>
-  <div class="in-car carB"></div>
-  <div class="walker" id="walker">
-    <svg viewBox="0 0 60 92" width="82" height="124" aria-hidden="true">
-      <g class="w-root">
-        <circle cx="30" cy="12" r="7.5" class="w-head"/>
-        <path d="M30 19 L30 50" class="w-line w-torso"/>
-        <g class="w-armA"><path d="M30 26 L31 45" class="w-line"/><rect x="27" y="43" width="11" height="9" rx="1.5" class="w-case"/></g>
-        <g class="w-armB"><path d="M30 26 L29 43" class="w-line"/></g>
-        <g class="w-legA"><path d="M30 50 L31 74" class="w-line"/><path d="M31 74 L39 74" class="w-line w-foot"/></g>
-        <g class="w-legB"><path d="M30 50 L29 74" class="w-line"/><path d="M29 74 L37 74" class="w-line w-foot"/></g>
-      </g>
-    </svg>
-  </div>
+  <div class="in-bg"></div>
+  <div class="in-orb o1"></div>
+  <div class="in-orb o2"></div>
+  <div class="in-grid"></div>
   <div class="in-ui">
-    <div class="in-logo" id="inLogo" aria-label="HEXALIFE"></div>
-    <div class="in-tag" id="inTag"></div>
-    <div class="in-load"><div class="in-load-fill" id="loadFill"></div><div class="in-load-spark"></div></div>
+    <div class="in-logo" id="inLogo" aria-label="HEXALIFE"><span class="in-sweep"></span></div>
+    <div class="in-line"></div>
+    <div class="in-tag" id="inTag">Simulateur de vie · Économie française · Temps réel</div>
+    <div class="in-load"><div class="in-load-fill" id="loadFill"></div></div>
     <div class="load-meta"><span id="loadTip">Initialisation…</span><span id="loadPct">0%</span></div>
     <div class="load-steps" id="loadSteps"></div>
     <button id="btnStart" class="btn btn-primary btn-lg in-start" disabled>Entrer en ville</button>
   </div>
-  <div class="in-vignette"></div>
   <div class="in-wipe"></div>
 </div>
 

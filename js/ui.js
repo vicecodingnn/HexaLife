@@ -1557,14 +1557,13 @@ const UI = (() => {
   }
 
   function rPlus() {
-    const pending = G.pendingPack ? DATA.packs.find(p => p.id === G.pendingPack) : null;
-    return '<h1>Boutique +</h1><div class="sub">' + (DB.hasStripe && DB.hasStripe() ? 'Paiement Stripe sécurisé : la récompense est créditée <b class="pos">automatiquement</b> dès confirmation du paiement (webhook signé).' : 'Paiement Stripe (mode test) : confirmation manuelle via « J’ai payé ».') + '</div>' +
-      (pending ? '<div class="panel pending-pack"><h2>⏳ Paiement en attente</h2><p class="m-desc">Pack « ' + esc(pending.n) + ' » (' + pending.price + ') réglé via Stripe ?</p>' +
-        '<div class="btn-row"><button class="btn btn-primary" data-act="confirmPack">Oui, j’ai payé</button><button class="btn btn-ghost" data-act="cancelPack">Annuler</button></div></div>' : '') +
+    const stripe = !!(DB.hasStripe && DB.hasStripe());
+    return '<h1>Boutique +</h1><div class="sub">' + (stripe ? 'Paiement Stripe sécurisé : la récompense est créditée <b class="pos">automatiquement</b> dès confirmation du paiement (webhook signé). Aucune manipulation manuelle : infalsifiable.' : 'Les paiements réels sont <b>désactivés</b> sur ce serveur : sans vérification Stripe côté serveur, aucun pack ne peut être crédité — personne ne peut se donner d’argent.') + '</div>' +
+      (stripe ? '' : '<div class="panel" style="border-color:var(--gold-dk)"><div class="rowline" style="border:0"><div><div class="lbl">🔒 Vérification des paiements</div><div class="det">Pour activer la boutique : renseignez <span class="mono">STRIPE_SECRET_KEY</span> et <span class="mono">STRIPE_WEBHOOK_SECRET</span> côté serveur (Render). Le crédit devient alors automatique et vérifié par signature Stripe.</div></div></div></div>') +
       '<div class="pack-grid">' + DATA.packs.map((p, k) =>
         '<div class="pack-card" style="animation-delay:' + (k * 0.08) + 's">' + (p.best ? '<span class="pack-best">MEILLEURE OFFRE</span>' : '') +
         '<div class="pack-glow"></div><div class="pack-amt">' + eur0(p.amount) + '</div><div class="pack-name">' + esc(p.n) + '</div>' +
-        '<div class="pack-price">' + p.price + '</div><button class="btn btn-primary pack-btn" data-act="buyPack" data-id="' + p.id + '">Acheter via Stripe</button></div>').join('') + '</div>';
+        '<div class="pack-price">' + p.price + '</div><button class="btn btn-primary pack-btn" data-act="buyPack" data-id="' + p.id + '"' + (stripe ? '' : ' disabled') + '>' + (stripe ? 'Payer via Stripe' : 'Indisponible') + '</button></div>').join('') + '</div>';
   }
 
   function rProfil() {

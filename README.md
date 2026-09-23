@@ -12,6 +12,20 @@ URSSAF), météo vivante, marché noir, succès, récompenses quotidiennes et mu
 
 ## ✨ Nouveautés de la v11 (refonte complète)
 
+### 🎬 v11.5 — intro titre-only, transitions fluides, boutique infalsifiable
+- **Intro refaite, simple et hyper stylée** : fond profond à orbes lumineux + grille
+  respirante, titre **HEXALIFE** en lettres qui se révèlent (blur + rotation 3D stagger),
+  **shine doré clipé sur les glyphes**, soulignement or, tagline, barre de chargement
+  minimale, sortie par **wipe circulaire doré**.
+- **Connexion / inscription fluides** : bouton → spinner → état succès vert « ✓ Bienvenue… »
+  (ou shake + message en cas d'erreur), puis **transition d'écran fluide** (blur + scale
+  entrant/sortant) vers le jeu.
+- **Boutique sécurisée, plus aucune confirmation manuelle** : le panneau « J'ai payé ? »
+  est SUPPRIMÉ (faille d'auto-crédit). Le crédit n'arrive que par **webhook Stripe signé** ;
+  sans clés Stripe côté serveur, les paiements sont désactivés et le bouton indique
+  « Indisponible » — personne ne peut se donner d'argent.
+- Vérification complète : 4 suites de tests repassées au vert après chaque changement.
+
 ### 🛡 v11.4 — sécurité, inscription renforcée, intro cinématique, Stripe auto
 - **Bug corrigé** : les soldes animés (compte courant / Livret A) *débordaient* de leur case
   (animation scale) → flash couleur/halo sans transform, contenu clipé proprement.
